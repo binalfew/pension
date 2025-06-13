@@ -9,6 +9,8 @@
     "typecheck": "react-router typegen && tsc -b"
   },
   "dependencies": {
+    "@conform-to/react": "^1.7.0",
+    "@conform-to/zod": "^1.7.0",
     "@prisma/client": "^6.9.0",
     "@radix-ui/react-slot": "^1.2.3",
     "@react-router/express": "^7.5.3",
@@ -23,10 +25,14 @@
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-router": "^7.5.3",
-    "tailwind-merge": "^3.3.1"
+    "remix-auth": "^4.2.0",
+    "remix-auth-microsoft": "^3.0.1",
+    "tailwind-merge": "^3.3.1",
+    "zod": "^3.25.64"
   },
   "devDependencies": {
     "@react-router/dev": "^7.5.3",
+    "@react-router/remix-routes-option-adapter": "^7.6.2",
     "@tailwindcss/vite": "^4.1.4",
     "@types/compression": "^1.7.5",
     "@types/express": "^5.0.1",
@@ -37,6 +43,7 @@
     "@types/react-dom": "^19.1.2",
     "cross-env": "^7.0.3",
     "prisma": "^6.9.0",
+    "remix-flat-routes": "^0.8.5",
     "tailwindcss": "^4.1.4",
     "tsx": "^4.20.3",
     "tw-animate-css": "^1.3.4",
