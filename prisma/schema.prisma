@@ -1,0 +1,70 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlserver"
+  url      = env("DATABASE_URL")
+}
+
+model AdminUsers {
+  ID    Int    @id @default(autoincrement())
+  Email String @db.NVarChar(Max)
+}
+
+model ComputedInterests {
+  ID        Int    @id @default(autoincrement())
+  SAPID     Int
+  YearMonth Int?
+  Interest  Float?
+}
+
+model Contributions {
+  ID                 Int                @id @default(autoincrement())
+  SAPID              Int?
+  Amount             Float?             @db.Money
+  ForPeriod          Int?
+  InPeriod           Int?
+  OfficeID           Int?
+  ContributionTypeID Int?
+  Office             Offices?           @relation(fields: [OfficeID], references: [ID])
+  ContributionType   ContributionTypes? @relation(fields: [ContributionTypeID], references: [ID])
+}
+
+model ContributionTypes {
+  ID                   Int             @id
+  ContributionTypeName String?         @db.NVarChar(100)
+  Contributions        Contributions[]
+}
+
+model Offices {
+  ID            Int             @id
+  OfficeName    String?         @db.NVarChar(50)
+  Contributions Contributions[]
+}
+
+model RelatedSAPIDs {
+  ID           Int  @id @default(autoincrement())
+  SAPID        Int?
+  RelatedSAPID Int?
+}
+
+model SAPIDEmailMapping {
+  ID           Int     @id @default(autoincrement())
+  SAPID        Int?
+  SystemID     String? @db.NVarChar(Max)
+  EmailAddress String? @db.NVarChar(Max)
+}
+
+model Users {
+  ID        Int     @id @default(autoincrement())
+  PensionID Int?
+  FullName  String? @db.NVarChar(255)
+  Email     String? @db.NVarChar(255)
+  SAPID     Int?
+}
+
+model YearlyInterest {
+  Year     Int    @id
+  Interest Float?
+}

@@ -1,5 +1,5 @@
+import prisma from "~/lib/prisma";
 import type { Route } from "./+types/home";
-import { Welcome } from "../welcome/welcome";
 
 export function meta({}: Route.MetaArgs) {
   return [
@@ -8,10 +8,33 @@ export function meta({}: Route.MetaArgs) {
   ];
 }
 
-export function loader({ context }: Route.LoaderArgs) {
-  return { message: context.VALUE_FROM_EXPRESS };
+export async function loader({ context }: Route.LoaderArgs) {
+  const contributions = await prisma.contributions.findMany({
+    take: 10,
+    orderBy: {
+      ID: "desc",
+    },
+    include: {
+      ContributionType: true,
+    },
+  });
+  return { message: context.VALUE_FROM_EXPRESS, contributions };
 }
 
 export default function Home({ loaderData }: Route.ComponentProps) {
-  return <Welcome message={loaderData.message} />;
+  const { contributions } = loaderData;
+
+  return (
+    <div>
+      <h1>Contributions</h1>
+      <ul>
+        {contributions.map((contribution) => (
+          <li key={contribution.ID}>
+            {contribution.ID} -{" "}
+            {contribution.ContributionType?.ContributionTypeName ?? "Unknown"}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 }
