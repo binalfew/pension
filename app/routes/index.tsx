@@ -95,7 +95,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 
   // Add Cululated Interests to the statement
   const cumulatedInterests = {
-    AccountName: "CUMULATIVE INTEREST",
+    AccountName: "CUMULATIVE INTERESTS",
     Balance: computedInterests.reduce(
       (acc, interest) => acc + interest.Interest,
       0
@@ -159,7 +159,11 @@ export default function Home({ loaderData }: Route.ComponentProps) {
           <h1 className="text-xl font-bold">{statement.EmployeeFullName}</h1>
           <div className="text-sm text-muted-foreground">
             SAP ID: {statement.EmployeeID} • As of{" "}
-            {new Date().toLocaleDateString()}
+            {new Date().toLocaleDateString("en-US", {
+              year: "numeric",
+              month: "long",
+              day: "numeric",
+            })}
           </div>
         </div>
 
