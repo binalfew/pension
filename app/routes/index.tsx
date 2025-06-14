@@ -94,8 +94,8 @@ export async function loader({ request }: Route.LoaderArgs) {
   >`SELECT * FROM ComputedInterests WHERE SAPID = ${user.SAPID} ORDER BY YearMonth DESC`;
 
   // Add Cululated Interests to the statement
-  statement.Accounts.push({
-    AccountName: "Cululated Interests",
+  const cumulatedInterests = {
+    AccountName: "CUMULATIVE INTEREST",
     Balance: computedInterests.reduce(
       (acc, interest) => acc + interest.Interest,
       0
@@ -103,8 +103,13 @@ export async function loader({ request }: Route.LoaderArgs) {
     Interest: 0,
     Withdrawals: 0,
     ClosingBalance: 0,
-  });
+  };
 
+  total.Balance += cumulatedInterests.Balance;
+  total.Interest += cumulatedInterests.Balance;
+  total.ClosingBalance += cumulatedInterests.Balance;
+
+  statement.Accounts.push(cumulatedInterests);
   statement.Accounts.push(total);
 
   return data({ statement, total, contributions, computedInterests });
