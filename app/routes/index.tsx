@@ -137,10 +137,10 @@ export default function Home({ loaderData }: Route.ComponentProps) {
 
         {/* Pension Statement Card */}
         <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center justify-between text-lg">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center justify-between text-base">
               <span>Pension Statement</span>
-              <span className="text-xl font-bold text-primary">
+              <span className="text-lg font-bold text-primary">
                 $
                 {total.Balance.toLocaleString(undefined, {
                   minimumFractionDigits: 2,
@@ -156,10 +156,10 @@ export default function Home({ loaderData }: Route.ComponentProps) {
               ).map((acc) => (
                 <div
                   key={acc.AccountName}
-                  className="flex items-center justify-between px-6 py-3 hover:bg-muted/30 transition-colors"
+                  className="flex items-center justify-between px-4 py-2 hover:bg-muted/30 transition-colors"
                 >
                   <span className="font-medium text-sm">{acc.AccountName}</span>
-                  <span className="font-bold">
+                  <span className="font-semibold text-sm">
                     $
                     {acc.Balance.toLocaleString(undefined, {
                       minimumFractionDigits: 2,
@@ -170,9 +170,9 @@ export default function Home({ loaderData }: Route.ComponentProps) {
               ))}
 
               {/* Total Row */}
-              <div className="flex items-center justify-between px-6 py-4 bg-primary/5 font-bold">
-                <span>TOTAL BALANCE</span>
-                <span className="text-primary text-lg">
+              <div className="flex items-center justify-between px-4 py-3 bg-primary/5 font-bold rounded-b-lg">
+                <span className="text-sm">TOTAL BALANCE</span>
+                <span className="text-primary">
                   $
                   {(
                     statement.Accounts.find(
