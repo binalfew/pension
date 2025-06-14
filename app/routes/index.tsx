@@ -85,8 +85,6 @@ export async function loader({ request }: Route.LoaderArgs) {
     total.ClosingBalance += account.ClosingBalance;
   }
 
-  statement.Accounts.push(total);
-
   const contributions = await prisma.$queryRaw<
     ContributionView[]
   >`SELECT * FROM ContributionView WHERE SAPID = ${user.SAPID} ORDER BY ForPeriod DESC`;
@@ -94,6 +92,20 @@ export async function loader({ request }: Route.LoaderArgs) {
   const computedInterests = await prisma.$queryRaw<
     ComputedInterest[]
   >`SELECT * FROM ComputedInterests WHERE SAPID = ${user.SAPID} ORDER BY YearMonth DESC`;
+
+  // Add Cululated Interests to the statement
+  statement.Accounts.push({
+    AccountName: "Cululated Interests",
+    Balance: computedInterests.reduce(
+      (acc, interest) => acc + interest.Interest,
+      0
+    ),
+    Interest: 0,
+    Withdrawals: 0,
+    ClosingBalance: 0,
+  });
+
+  statement.Accounts.push(total);
 
   return data({ statement, total, contributions, computedInterests });
 }
