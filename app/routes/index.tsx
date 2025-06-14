@@ -33,7 +33,7 @@ export function meta({}: Route.MetaArgs) {
 export async function loader({ request }: Route.LoaderArgs) {
   const users = await prisma.$queryRaw<
     User[]
-  >`SELECT * FROM users WHERE Email = 'Ibrahimj@africa-union.org'`;
+  >`SELECT * FROM users WHERE Email = 'Gideons@africa-union.org'`;
   const user = users[0];
 
   if (!user) {
