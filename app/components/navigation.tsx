@@ -1,5 +1,6 @@
 import { Form, Link } from "react-router";
 import { Button } from "~/components/ui/button";
+import { Separator } from "./ui/separator";
 
 export default function Navigation({
   user,
@@ -94,13 +95,17 @@ export default function Navigation({
           <div className="flex items-center">
             {user ? (
               <Form action="/logout" method="POST">
-                <Button
-                  variant="link"
-                  type="submit"
-                  className="cursor-pointer text-muted-foreground"
-                >
-                  Logout
-                </Button>
+                <div className="flex h-5 items-center space-x-4 text-sm">
+                  <div>Welcome, {user.name}</div>
+                  <Separator orientation="vertical" />
+                  <Button
+                    variant="link"
+                    type="submit"
+                    className="cursor-pointer text-muted-foreground"
+                  >
+                    Logout
+                  </Button>
+                </div>
               </Form>
             ) : (
               <Form action={formAction} method="POST">

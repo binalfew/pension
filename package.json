@@ -12,6 +12,7 @@
     "@conform-to/react": "^1.7.0",
     "@conform-to/zod": "^1.7.0",
     "@prisma/client": "^6.9.0",
+    "@radix-ui/react-separator": "^1.1.7",
     "@radix-ui/react-slot": "^1.2.3",
     "@react-router/express": "^7.5.3",
     "@react-router/node": "^7.5.3",
