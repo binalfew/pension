@@ -23,7 +23,7 @@ let microsoftStrategy = new MicrosoftStrategy(
     clientId: process.env.MICROSOFT_CLIENT_ID,
     clientSecret: process.env.MICROSOFT_CLIENT_SECRET,
     tenantId: process.env.MICROSOFT_TENANT_ID,
-    redirectURI: "http://localhost:3000/auth/microsoft/callback",
+    redirectURI: process.env.MICROSOFT_REDIRECT_URI,
     scopes: ["openid", "profile", "email"],
     prompt: "login",
   },

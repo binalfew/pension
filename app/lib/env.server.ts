@@ -8,6 +8,7 @@ const schema = z.object({
   MICROSOFT_CLIENT_ID: z.string(),
   MICROSOFT_CLIENT_SECRET: z.string(),
   MICROSOFT_TENANT_ID: z.string(),
+  MICROSOFT_REDIRECT_URI: z.string(),
 });
 
 declare global {
