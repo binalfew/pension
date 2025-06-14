@@ -11,6 +11,7 @@ import {
 import Welcome from "~/components/welcome";
 import prisma from "~/lib/prisma";
 import { useOptionalUser } from "~/lib/user";
+import type { ComputedInterest } from "~/types/computed-interest";
 import type { Contribution } from "~/types/contribution";
 import type { ContributionType } from "~/types/contribution-type";
 import type { ContributionView } from "~/types/contribution-view";
@@ -90,7 +91,11 @@ export async function loader({ request }: Route.LoaderArgs) {
     ContributionView[]
   >`SELECT * FROM ContributionView WHERE SAPID = ${user.SAPID} ORDER BY ForPeriod DESC`;
 
-  return data({ statement, total, contributions });
+  const computedInterests = await prisma.$queryRaw<
+    ComputedInterest[]
+  >`SELECT * FROM ComputedInterests WHERE SAPID = ${user.SAPID} ORDER BY YearMonth DESC`;
+
+  return data({ statement, total, contributions, computedInterests });
 }
 
 // Helper function to format period (YYYYMM to readable format)
@@ -116,7 +121,7 @@ function formatPeriod(period: number): string {
 
 export default function Home({ loaderData }: Route.ComponentProps) {
   const user = useOptionalUser();
-  const { statement, total, contributions } = loaderData;
+  const { statement, total, contributions, computedInterests } = loaderData;
 
   if (user) {
     return (
@@ -229,6 +234,36 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                     </TableCell>
                     <TableCell className="font-medium w-[35%]">
                       {contribution.ContributionTypeName}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Computed Interests</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Year Month</TableHead>
+                  <TableHead>Interest</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {computedInterests.map((interest) => (
+                  <TableRow key={interest.ID}>
+                    <TableCell>{formatPeriod(interest.YearMonth)}</TableCell>
+                    <TableCell>
+                      $
+                      {interest.Interest.toLocaleString(undefined, {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
                     </TableCell>
                   </TableRow>
                 ))}
