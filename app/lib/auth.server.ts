@@ -1,6 +1,9 @@
 import { redirect } from "react-router";
 import { Authenticator } from "remix-auth";
 import { MicrosoftStrategy } from "remix-auth-microsoft";
+import type { User } from "~/types/user";
+import prisma from "./prisma";
+import { authSessionStorage } from "./session.server";
 
 const SESSION_EXPIRATION_TIME = 1000 * 60 * 60 * 24 * 30; // 30 days
 export const getSessionExpirationDate = () =>
@@ -8,7 +11,7 @@ export const getSessionExpirationDate = () =>
 
 export const userIdKey = "userId";
 
-type ProviderUser = {
+export type ProviderUser = {
   id: string;
   email: string;
   username: string;
@@ -45,3 +48,46 @@ let microsoftStrategy = new MicrosoftStrategy(
 );
 
 authenticator.use(microsoftStrategy);
+
+export async function getUserEmail(request: Request) {
+  const cookieSession = await authSessionStorage.getSession(
+    request.headers.get("cookie")
+  );
+  const userId = cookieSession.get(userIdKey);
+
+  if (!userId) return null;
+
+  const users = await prisma.$queryRaw<
+    User[]
+  >`SELECT * FROM users WHERE Email = ${userId}`;
+
+  if (!users || users.length === 0) {
+    // throw await logout({ request });
+    return "Ibrahimj@africa-union.org";
+  }
+
+  return users[0].Email;
+}
+
+export async function requireUser(request: Request) {
+  const userEmail = await getUserEmail(request);
+
+  const users = await prisma.$queryRaw<
+    User[]
+  >`SELECT * FROM users WHERE Email = ${userEmail}`;
+
+  if (!users || users.length === 0) {
+    throw logout({ request });
+  }
+
+  return users[0];
+}
+
+export async function logout({ request }: { request: Request }) {
+  let session = await authSessionStorage.getSession(
+    request.headers.get("cookie")
+  );
+  return redirect("/", {
+    headers: { "Set-Cookie": await authSessionStorage.destroySession(session) },
+  });
+}

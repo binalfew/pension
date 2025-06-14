@@ -5,7 +5,7 @@ import { Separator } from "./ui/separator";
 export default function Navigation({
   user,
 }: {
-  user: {
+  user?: {
     id: string;
     email: string;
     username: string;
@@ -21,75 +21,141 @@ export default function Navigation({
         <div className="flex h-12 items-center justify-between">
           <Link to="/" className="flex items-center space-x-2">
             <div className="relative">
-              {/* Logo SVG */}
+              {/* Dot Pattern Logo with Arrow */}
               <svg
                 width="40"
                 height="40"
                 viewBox="0 0 40 40"
                 fill="none"
                 xmlns="http://www.w3.org/2000/svg"
-                className="text-primary transition-all duration-300 hover:scale-105"
+                className="text-primary"
               >
-                {/* Shield shape with gradient */}
-                <defs>
-                  <linearGradient
-                    id="shieldGradient"
-                    x1="0%"
-                    y1="0%"
-                    x2="100%"
-                    y2="100%"
-                  >
-                    <stop
-                      offset="0%"
-                      stopColor="currentColor"
-                      stopOpacity="0.15"
-                    />
-                    <stop
-                      offset="100%"
-                      stopColor="currentColor"
-                      stopOpacity="0.05"
-                    />
-                  </linearGradient>
-                </defs>
-
-                {/* Shield base */}
-                <path
-                  d="M20 4L8 8V16C8 24.5 13.5 31.5 20 36C26.5 31.5 32 24.5 32 16V8L20 4Z"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  fill="url(#shieldGradient)"
-                  className="transition-all duration-300"
-                />
-
-                {/* Modern 'P' design */}
-                <path
-                  d="M16 14V26M16 14H22C24.2 14 26 15.8 26 18C26 20.2 24.2 22 22 22H16"
-                  stroke="currentColor"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className="transition-all duration-300"
-                />
-
-                {/* Decorative elements */}
+                {/* Row 1 */}
                 <circle
-                  cx="20"
-                  cy="18"
-                  r="1"
+                  cx="6"
+                  cy="12"
+                  r="2"
                   fill="currentColor"
-                  className="opacity-50 animate-pulse"
+                  className="opacity-30"
                 />
-                <path
-                  d="M20 24L20 28"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                  className="opacity-50"
+                <circle
+                  cx="12"
+                  cy="12"
+                  r="2"
+                  fill="currentColor"
+                  className="opacity-30"
                 />
+                <circle
+                  cx="18"
+                  cy="12"
+                  r="2"
+                  fill="currentColor"
+                  className="opacity-30"
+                />
+                <circle
+                  cx="24"
+                  cy="12"
+                  r="2"
+                  fill="currentColor"
+                  className="opacity-30"
+                />
+                <circle cx="30" cy="12" r="2" fill="currentColor" />
+
+                {/* Row 2 */}
+                <circle
+                  cx="6"
+                  cy="17"
+                  r="2"
+                  fill="currentColor"
+                  className="opacity-30"
+                />
+                <circle
+                  cx="12"
+                  cy="17"
+                  r="2"
+                  fill="currentColor"
+                  className="opacity-30"
+                />
+                <circle cx="18" cy="17" r="2" fill="currentColor" />
+                <circle cx="24" cy="17" r="2" fill="currentColor" />
+                <circle cx="30" cy="17" r="2" fill="currentColor" />
+                <circle cx="36" cy="17" r="2" fill="currentColor" />
+
+                {/* Row 3 (center - longest) */}
+                <circle
+                  cx="6"
+                  cy="22"
+                  r="2"
+                  fill="currentColor"
+                  className="opacity-30"
+                />
+                <circle
+                  cx="12"
+                  cy="22"
+                  r="2"
+                  fill="currentColor"
+                  className="opacity-30"
+                />
+                <circle cx="18" cy="22" r="2" fill="currentColor" />
+                <circle cx="24" cy="22" r="2" fill="currentColor" />
+                <circle cx="30" cy="22" r="2" fill="currentColor" />
+                <circle cx="36" cy="22" r="2" fill="currentColor" />
+
+                {/* Row 4 */}
+                <circle
+                  cx="6"
+                  cy="27"
+                  r="2"
+                  fill="currentColor"
+                  className="opacity-30"
+                />
+                <circle
+                  cx="12"
+                  cy="27"
+                  r="2"
+                  fill="currentColor"
+                  className="opacity-30"
+                />
+                <circle cx="18" cy="27" r="2" fill="currentColor" />
+                <circle cx="24" cy="27" r="2" fill="currentColor" />
+                <circle cx="30" cy="27" r="2" fill="currentColor" />
+
+                {/* Row 5 */}
+                <circle
+                  cx="6"
+                  cy="32"
+                  r="2"
+                  fill="currentColor"
+                  className="opacity-30"
+                />
+                <circle
+                  cx="12"
+                  cy="32"
+                  r="2"
+                  fill="currentColor"
+                  className="opacity-30"
+                />
+                <circle
+                  cx="18"
+                  cy="32"
+                  r="2"
+                  fill="currentColor"
+                  className="opacity-30"
+                />
+                <circle
+                  cx="24"
+                  cy="32"
+                  r="2"
+                  fill="currentColor"
+                  className="opacity-30"
+                />
+                <circle cx="30" cy="32" r="2" fill="currentColor" />
               </svg>
             </div>
             <div className="flex flex-col">
-              <span className="font-bold text-xl leading-tight">Pension</span>
+              <span className="font-bold text-xl leading-tight">
+                AU Pension Statement
+              </span>
             </div>
           </Link>
           <div className="flex items-center">

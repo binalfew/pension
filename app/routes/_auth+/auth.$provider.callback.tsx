@@ -1,5 +1,5 @@
 import { data, redirect } from "react-router";
-import { authenticator } from "~/lib/auth.server";
+import { authenticator, userIdKey, type ProviderUser } from "~/lib/auth.server";
 import { authSessionStorage } from "~/lib/session.server";
 import type { Route } from "./+types/auth.$provider.callback";
 
@@ -18,11 +18,16 @@ export async function loader({ request, params }: Route.LoaderArgs) {
       throw error;
     });
 
+  if ("error" in user) {
+    return data({ error: user.error });
+  }
+
+  const providerUser = user as ProviderUser;
   let session = await authSessionStorage.getSession(
     request.headers.get("cookie")
   );
 
-  session.set("user", user);
+  session.set(userIdKey, providerUser.email);
 
   return redirect("/", {
     headers: {
