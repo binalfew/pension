@@ -11,8 +11,7 @@ export default function Welcome() {
         <div className="p-6 border rounded-lg space-y-2">
           <h3 className="text-lg font-semibold">Pension Overview</h3>
           <p className="text-muted-foreground">
-            View your current pension balance, contribution history, and
-            projected retirement income.
+            View your current pension balance, contribution history.
           </p>
         </div>
 

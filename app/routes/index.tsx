@@ -9,15 +9,9 @@ import {
   TableRow,
 } from "~/components/ui/table";
 import Welcome from "~/components/welcome";
-import {
-  getAllContributionTypes,
-  getComputedInterestsBySapId,
-  getContributionsBySapId,
-  getContributionsByType,
-  getUserByEmail,
-} from "~/lib/db.server";
+import { generatePensionStatement, getUserByEmail } from "~/lib/db.server";
 import { useOptionalUser } from "~/lib/user";
-import type { Account, Statement } from "~/types/statement";
+import { formatPeriod } from "~/lib/utils";
 import type { Route } from "./+types/index";
 
 export function meta({}: Route.MetaArgs) {
@@ -38,105 +32,10 @@ export async function loader({ request }: Route.LoaderArgs) {
     throw new Error("User not found");
   }
 
-  const statement: Statement = {
-    EmployeeFullName: user.FullName ?? "",
-    AsOfMonth: new Date(),
-    EmployeeID: user.SAPID ?? 0,
-    PensionID: user.PensionID ?? 0,
-    Accounts: [],
-  };
-
-  const total: Account = {
-    AccountName: "TOTAL",
-    Balance: 0,
-    Interest: 0,
-    Withdrawals: 0,
-    ClosingBalance: 0,
-  };
-
-  const contributionTypes = await getAllContributionTypes();
-  for (const contributionType of contributionTypes) {
-    const contributions = await getContributionsByType(
-      user.SAPID ?? 0,
-      contributionType.ID
-    );
-    const account = {
-      AccountName: contributionType.ContributionTypeName,
-      Balance: contributions.reduce(
-        (acc, contribution) => acc + (contribution.Amount ?? 0),
-        0
-      ),
-      Interest: 0,
-      Withdrawals: 0,
-      ClosingBalance: 0,
-    };
-
-    account.ClosingBalance =
-      account.Balance + account.Interest + account.Withdrawals;
-
-    statement.Accounts.push(account);
-
-    total.Balance += account.Balance;
-    total.Interest += account.Interest;
-    total.Withdrawals += account.Withdrawals;
-    total.ClosingBalance += account.ClosingBalance;
-  }
-
-  const contributions = await getContributionsBySapId(user.SAPID ?? 0);
-  const computedInterests = await getComputedInterestsBySapId(user.SAPID ?? 0);
-
-  // Add Cululated Interests to the statement
-  const cumulatedInterests = {
-    AccountName: "CUMULATIVE INTERESTS",
-    Balance: computedInterests.reduce(
-      (acc, interest) => acc + interest.Interest,
-      0
-    ),
-    Interest: 0,
-    Withdrawals: 0,
-    ClosingBalance: 0,
-  };
-
-  total.Balance += cumulatedInterests.Balance;
-  total.Interest += cumulatedInterests.Balance;
-  total.ClosingBalance += cumulatedInterests.Balance;
-
-  statement.Accounts.push(cumulatedInterests);
-  statement.Accounts.push(total);
+  const { statement, total, contributions, computedInterests } =
+    await generatePensionStatement(user);
 
   return data({ statement, total, contributions, computedInterests });
-}
-
-// Helper function to format period (YYYYMM to readable format)
-function formatPeriod(period: number): string {
-  // Convert to string and ensure it's 6 digits
-  const periodStr = period.toString().padStart(6, "0");
-
-  // Extract year and month
-  const year = parseInt(periodStr.substring(0, 4));
-  const month = parseInt(periodStr.substring(4, 6));
-
-  // If month is not valid (1-12), return original input
-  if (month < 1 || month > 12) {
-    return period.toString();
-  }
-
-  const monthNames = [
-    "Jan",
-    "Feb",
-    "Mar",
-    "Apr",
-    "May",
-    "Jun",
-    "Jul",
-    "Aug",
-    "Sep",
-    "Oct",
-    "Nov",
-    "Dec",
-  ];
-
-  return `${monthNames[month - 1]} ${year}`;
 }
 
 export default function Home({ loaderData }: Route.ComponentProps) {
