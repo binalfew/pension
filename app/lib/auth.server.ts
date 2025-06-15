@@ -63,7 +63,7 @@ export async function getUserEmail(request: Request) {
 
   if (!users || users.length === 0) {
     // throw await logout({ request });
-    return "Ibrahimj@africa-union.org";
+    return "Gideons@africa-union.org";
   }
 
   return users[0].Email;
