@@ -1,3 +1,4 @@
+import { Calendar, Hash, User } from "lucide-react";
 import { data } from "react-router";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
 import {
@@ -46,15 +47,34 @@ export default function Home({ loaderData }: Route.ComponentProps) {
     return (
       <div className="max-w-4xl mx-auto space-y-6">
         {/* User Info Header */}
-        <div className="space-y-1">
-          <h1 className="text-xl font-bold">{statement.EmployeeFullName}</h1>
-          <div className="text-sm text-muted-foreground">
-            SAP ID: {statement.EmployeeID} • As of{" "}
-            {new Date().toLocaleDateString("en-US", {
-              year: "numeric",
-              month: "long",
-              day: "numeric",
-            })}
+        <div className="flex items-center justify-between gap-4 p-4 bg-muted/30 rounded-lg border border-border shadow-sm">
+          <div className="flex items-center gap-4">
+            <div className="flex-shrink-0">
+              <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center">
+                <User className="w-6 h-6 text-primary" />
+              </div>
+            </div>
+            <div className="min-w-0">
+              <h1 className="text-xl font-semibold text-foreground truncate">
+                {statement.EmployeeFullName}
+              </h1>
+              <div className="flex items-center gap-1 mt-1 text-sm text-muted-foreground">
+                <Hash className="w-3 h-3" />
+                <span>SAP ID: {statement.EmployeeID}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1 text-sm text-muted-foreground flex-shrink-0">
+            <Calendar className="w-3 h-3" />
+            <span>
+              As of{" "}
+              {new Date().toLocaleDateString("en-US", {
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+              })}
+            </span>
           </div>
         </div>
 
