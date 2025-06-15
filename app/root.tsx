@@ -12,8 +12,7 @@ import type { Route } from "./+types/root";
 import "./app.css";
 import Navigation from "./components/navigation";
 import { getUserEmail, logout } from "./lib/auth.server";
-import prisma from "./lib/prisma";
-import type { User } from "./types/user";
+import { getUserByEmail } from "./lib/db.server";
 
 export const links: Route.LinksFunction = () => [
   { rel: "preconnect", href: "https://fonts.googleapis.com" },
@@ -30,17 +29,12 @@ export const links: Route.LinksFunction = () => [
 
 export async function loader({ request }: Route.LoaderArgs) {
   const userEmail = await getUserEmail(request);
-  const users = userEmail
-    ? await prisma.$queryRaw<
-        User[]
-      >`SELECT * FROM users WHERE Email = ${userEmail}`
-    : [];
+  const dbUser = userEmail ? await getUserByEmail(userEmail) : null;
 
-  if (userEmail && users.length === 0) {
+  if (userEmail && !dbUser) {
     await logout({ request });
   }
 
-  const dbUser = users[0];
   const transformedUser = dbUser
     ? {
         id: dbUser.Email,

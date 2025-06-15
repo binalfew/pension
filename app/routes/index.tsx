@@ -9,14 +9,15 @@ import {
   TableRow,
 } from "~/components/ui/table";
 import Welcome from "~/components/welcome";
-import prisma from "~/lib/prisma";
+import {
+  getAllContributionTypes,
+  getComputedInterestsBySapId,
+  getContributionsBySapId,
+  getContributionsByType,
+  getUserByEmail,
+} from "~/lib/db.server";
 import { useOptionalUser } from "~/lib/user";
-import type { ComputedInterest } from "~/types/computed-interest";
-import type { Contribution } from "~/types/contribution";
-import type { ContributionType } from "~/types/contribution-type";
-import type { ContributionView } from "~/types/contribution-view";
 import type { Account, Statement } from "~/types/statement";
-import type { User } from "~/types/user";
 import type { Route } from "./+types/index";
 
 export function meta({}: Route.MetaArgs) {
@@ -31,10 +32,7 @@ export function meta({}: Route.MetaArgs) {
 }
 
 export async function loader({ request }: Route.LoaderArgs) {
-  const users = await prisma.$queryRaw<
-    User[]
-  >`SELECT * FROM users WHERE Email = 'Gideons@africa-union.org'`;
-  const user = users[0];
+  const user = await getUserByEmail("Gideons@africa-union.org");
 
   if (!user) {
     throw new Error("User not found");
@@ -56,13 +54,12 @@ export async function loader({ request }: Route.LoaderArgs) {
     ClosingBalance: 0,
   };
 
-  const contributionTypes = await prisma.$queryRaw<
-    ContributionType[]
-  >`SELECT * FROM contributionTypes`;
+  const contributionTypes = await getAllContributionTypes();
   for (const contributionType of contributionTypes) {
-    const contributions = await prisma.$queryRaw<
-      Contribution[]
-    >`SELECT * FROM contributions WHERE SAPID = ${user.SAPID} AND ContributionTypeID = ${contributionType.ID}`;
+    const contributions = await getContributionsByType(
+      user.SAPID ?? 0,
+      contributionType.ID
+    );
     const account = {
       AccountName: contributionType.ContributionTypeName,
       Balance: contributions.reduce(
@@ -85,13 +82,8 @@ export async function loader({ request }: Route.LoaderArgs) {
     total.ClosingBalance += account.ClosingBalance;
   }
 
-  const contributions = await prisma.$queryRaw<
-    ContributionView[]
-  >`SELECT * FROM ContributionView WHERE SAPID = ${user.SAPID} ORDER BY ForPeriod DESC`;
-
-  const computedInterests = await prisma.$queryRaw<
-    ComputedInterest[]
-  >`SELECT * FROM ComputedInterests WHERE SAPID = ${user.SAPID} ORDER BY YearMonth DESC`;
+  const contributions = await getContributionsBySapId(user.SAPID ?? 0);
+  const computedInterests = await getComputedInterestsBySapId(user.SAPID ?? 0);
 
   // Add Cululated Interests to the statement
   const cumulatedInterests = {
