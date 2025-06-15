@@ -17,7 +17,7 @@ export default function Navigation({
   const formAction = "/auth/microsoft";
 
   return (
-    <nav className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+    <nav className="border-b bg-muted/95 backdrop-blur supports-[backdrop-filter]:bg-muted/60">
       <div className="w-full mx-auto px-0">
         <div className="flex h-12 items-center justify-between">
           <Link to="/" className="flex items-center space-x-2">

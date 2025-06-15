@@ -27,7 +27,7 @@ export function meta({}: Route.MetaArgs) {
 }
 
 export async function loader({ request }: Route.LoaderArgs) {
-  const user = await getUserByEmail("Gideons@africa-union.org");
+  const user = await getUserByEmail("Ibrahimj@africa-union.org");
 
   if (!user) {
     throw new Error("User not found");
