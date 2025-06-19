@@ -55,22 +55,15 @@ export async function getUserEmail(request: Request) {
   );
   const userId = cookieSession.get(userIdKey);
 
-  if (!userId) return null;
-
-  const users = await prisma.$queryRaw<
-    User[]
-  >`SELECT * FROM users WHERE Email = ${userId}`;
-
-  if (!users || users.length === 0) {
-    // throw await logout({ request });
-    return "Hailuk@africa-union.org";
-  }
-
-  return users[0].Email;
+  return userId ?? null;
 }
 
 export async function requireUser(request: Request) {
   const userEmail = await getUserEmail(request);
+
+  if (!userEmail) {
+    throw logout({ request });
+  }
 
   const users = await prisma.$queryRaw<
     User[]

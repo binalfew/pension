@@ -11,8 +11,8 @@ import {
 import type { Route } from "./+types/root";
 import "./app.css";
 import Navigation from "./components/navigation";
-import { getUserEmail, logout } from "./lib/auth.server";
-import { getUserByEmail } from "./lib/db.server";
+import { getUserEmail } from "./lib/auth.server";
+import { resolveUserByEmail } from "./lib/db.server";
 
 export const links: Route.LinksFunction = () => [
   { rel: "preconnect", href: "https://fonts.googleapis.com" },
@@ -29,22 +29,29 @@ export const links: Route.LinksFunction = () => [
 
 export async function loader({ request }: Route.LoaderArgs) {
   const userEmail = await getUserEmail(request);
-  const dbUser = userEmail ? await getUserByEmail(userEmail) : null;
 
-  if (userEmail && !dbUser) {
-    await logout({ request });
+  if (!userEmail) {
+    return data({ user: undefined });
   }
 
-  const transformedUser = dbUser
-    ? {
-        id: dbUser.Email,
-        email: dbUser.Email,
-        username: dbUser.FullName || dbUser.Email,
-        name: dbUser.FullName,
-      }
-    : undefined;
+  const resolvedUser = await resolveUserByEmail(userEmail);
 
-  return data({ user: transformedUser });
+  if (!resolvedUser) {
+    return data({ user: undefined });
+  }
+
+  const { user, role } = resolvedUser;
+
+  // Format user object for the UI
+  const formattedUser = {
+    id: user.Email,
+    email: user.Email,
+    username: "FullName" in user ? user.FullName || user.Email : user.Email,
+    name: "FullName" in user ? user.FullName : user.Email,
+    Role: role,
+  };
+
+  return data({ user: formattedUser });
 }
 
 export function Layout({ children }: { children: React.ReactNode }) {
