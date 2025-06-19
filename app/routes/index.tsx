@@ -1,4 +1,4 @@
-import { Calendar, Download, Hash, History, Search, User } from "lucide-react";
+import { Calendar, Hash, Search, User } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import {
   data,
@@ -8,7 +8,6 @@ import {
   useSubmit,
 } from "react-router";
 import { StatusButton } from "~/components/status-button";
-import { Button } from "~/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
 import { Input } from "~/components/ui/input";
 import { Label } from "~/components/ui/label";
@@ -25,9 +24,7 @@ import { getUserEmail } from "~/lib/auth.server";
 import {
   generatePensionStatement,
   generatePensionStatementBySapId,
-  getSearchHistory,
   resolveUserByEmail,
-  saveSearchHistory,
 } from "~/lib/db.server";
 import { formatPeriod, useDebounce, useIsPending } from "~/lib/utils";
 import type { Route } from "./+types/index";
@@ -55,7 +52,6 @@ export async function loader({ request }: Route.LoaderArgs) {
       contributions: null,
       computedInterests: null,
       error: null,
-      searchHistory: null,
     });
   }
 
@@ -71,7 +67,6 @@ export async function loader({ request }: Route.LoaderArgs) {
       contributions: null,
       computedInterests: null,
       error: "User not found in system",
-      searchHistory: null,
     });
   }
 
@@ -81,8 +76,6 @@ export async function loader({ request }: Route.LoaderArgs) {
 
   // For admin users
   if (role === "Admin") {
-    const searchHistory = await getSearchHistory(user.Email);
-
     // If admin is viewing a specific user's statement
     if (selectedSapId) {
       const sapId = parseInt(selectedSapId);
@@ -94,7 +87,6 @@ export async function loader({ request }: Route.LoaderArgs) {
           contributions: null,
           computedInterests: null,
           error: "Invalid SAP ID",
-          searchHistory,
         });
       }
 
@@ -107,22 +99,13 @@ export async function loader({ request }: Route.LoaderArgs) {
           contributions: null,
           computedInterests: null,
           error: `Pension statement not found for the selected sap id ${sapId}`,
-          searchHistory,
         });
       }
-
-      // Save to search history
-      await saveSearchHistory(
-        user.Email,
-        sapId,
-        statementData.statement.EmployeeFullName
-      );
 
       return data({
         user: { ...user, Role: role },
         ...statementData,
         error: null,
-        searchHistory,
       });
     }
 
@@ -134,7 +117,6 @@ export async function loader({ request }: Route.LoaderArgs) {
       contributions: null,
       computedInterests: null,
       error: null,
-      searchHistory,
     });
   }
 
@@ -150,7 +132,6 @@ export async function loader({ request }: Route.LoaderArgs) {
       contributions,
       computedInterests,
       error: null,
-      searchHistory: null,
     });
   }
 
@@ -162,7 +143,6 @@ export async function loader({ request }: Route.LoaderArgs) {
     contributions: null,
     computedInterests: null,
     error: "No pension data available",
-    searchHistory: null,
   });
 }
 
@@ -204,15 +184,8 @@ export default function Home({ loaderData }: Route.ComponentProps) {
     }
   }, 300);
 
-  const {
-    user,
-    statement,
-    total,
-    contributions,
-    computedInterests,
-    error,
-    searchHistory,
-  } = loaderData;
+  const { user, statement, total, contributions, computedInterests, error } =
+    loaderData;
 
   const suggestions = searchFetcher.data?.suggestions || [];
 
@@ -335,39 +308,6 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                 </StatusButton>
               </div>
             </Form>
-
-            {/* Search History */}
-            {searchHistory && searchHistory.length > 0 && (
-              <div className="space-y-2">
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <History className="h-4 w-4" />
-                  <span>Recent searches</span>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {searchHistory.slice(0, 5).map((item) => (
-                    <Button
-                      key={item.sapId}
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        const form = document.querySelector(
-                          'form[method="GET"]'
-                        ) as HTMLFormElement;
-                        const input = form?.querySelector(
-                          'input[name="sapId"]'
-                        ) as HTMLInputElement;
-                        if (input) {
-                          input.value = item.sapId.toString();
-                          handleFormChange(form);
-                        }
-                      }}
-                    >
-                      {item.employeeName} ({item.sapId})
-                    </Button>
-                  ))}
-                </div>
-              </div>
-            )}
           </CardContent>
         </Card>
 
@@ -428,18 +368,6 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                         maximumFractionDigits: 2,
                       })}
                     </span>
-                    {(user.Role as string) === "Admin" && (
-                      <div className="flex gap-1">
-                        <Button variant="outline" size="sm" asChild>
-                          <a
-                            href={`/api/export?sapId=${statement.EmployeeID}&format=pdf`}
-                          >
-                            <Download className="h-4 w-4 mr-1" />
-                            PDF
-                          </a>
-                        </Button>
-                      </div>
-                    )}
                   </div>
                 </CardTitle>
               </CardHeader>
@@ -640,18 +568,6 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                     maximumFractionDigits: 2,
                   })}
                 </span>
-                {(user.Role as string) === "Admin" && (
-                  <div className="flex gap-1">
-                    <Button variant="outline" size="sm" asChild>
-                      <a
-                        href={`/api/export?sapId=${statement.EmployeeID}&format=pdf`}
-                      >
-                        <Download className="h-4 w-4 mr-1" />
-                        PDF
-                      </a>
-                    </Button>
-                  </div>
-                )}
               </div>
             </CardTitle>
           </CardHeader>
