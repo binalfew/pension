@@ -1,4 +1,4 @@
-import { Calendar, Hash, Search, User } from "lucide-react";
+import { Calendar, Download, Hash, Search, User } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import {
   data,
@@ -342,16 +342,27 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                 </div>
               </div>
 
-              <div className="flex items-center gap-1 text-sm text-muted-foreground flex-shrink-0">
-                <Calendar className="w-3 h-3" />
-                <span>
-                  As of{" "}
-                  {new Date().toLocaleDateString("en-US", {
-                    year: "numeric",
-                    month: "long",
-                    day: "numeric",
-                  })}
-                </span>
+              <div className="flex items-center gap-4 flex-shrink-0">
+                <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                  <Calendar className="w-3 h-3" />
+                  <span>
+                    As of{" "}
+                    {new Date().toLocaleDateString("en-US", {
+                      year: "numeric",
+                      month: "long",
+                      day: "numeric",
+                    })}
+                  </span>
+                </div>
+                <a
+                  href={`/api/pdf?sapId=${statement.EmployeeID}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 px-3 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors text-sm font-medium"
+                >
+                  <Download className="w-4 h-4" />
+                  Download PDF
+                </a>
               </div>
             </div>
 
@@ -542,16 +553,27 @@ export default function Home({ loaderData }: Route.ComponentProps) {
             </div>
           </div>
 
-          <div className="flex items-center gap-1 text-sm text-muted-foreground flex-shrink-0">
-            <Calendar className="w-3 h-3" />
-            <span>
-              As of{" "}
-              {new Date().toLocaleDateString("en-US", {
-                year: "numeric",
-                month: "long",
-                day: "numeric",
-              })}
-            </span>
+          <div className="flex items-center gap-4 flex-shrink-0">
+            <div className="flex items-center gap-1 text-sm text-muted-foreground">
+              <Calendar className="w-3 h-3" />
+              <span>
+                As of{" "}
+                {new Date().toLocaleDateString("en-US", {
+                  year: "numeric",
+                  month: "long",
+                  day: "numeric",
+                })}
+              </span>
+            </div>
+            <a
+              href="/api/pdf"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 px-3 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors text-sm font-medium"
+            >
+              <Download className="w-4 h-4" />
+              Download PDF
+            </a>
           </div>
         </div>
 
