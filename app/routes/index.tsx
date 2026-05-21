@@ -1,4 +1,12 @@
-import { Calendar, Download, Hash, Search, User } from "lucide-react";
+import {
+  Calendar,
+  Check,
+  Download,
+  Hash,
+  Info,
+  Search,
+  User,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import {
   data,
@@ -233,28 +241,42 @@ export default function Home({ loaderData }: Route.ComponentProps) {
       );
 
       return (
-        <div className="max-w-2xl mx-auto py-12">
-          <div className="rounded-lg border border-border bg-card shadow-sm overflow-hidden">
-            <div className="px-6 py-5 border-b border-border bg-muted/30">
-              <h1 className="text-xl font-semibold text-foreground">
-                No pension record found
-              </h1>
-              <p className="mt-1 text-sm text-muted-foreground">
-                You signed in successfully, but we couldn't find any pension
-                information linked to{" "}
-                <span className="font-medium text-foreground">
-                  {signedInEmail ?? "your account"}
-                </span>
-                .
-              </p>
+        <div className="max-w-3xl mx-auto py-16">
+          <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+            <div className="px-8 py-7 border-b border-border bg-muted/30">
+              <div className="flex items-start gap-4">
+                <div className="flex-shrink-0 mt-0.5">
+                  <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                    <Info className="w-6 h-6 text-primary" />
+                  </div>
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h1 className="text-2xl font-semibold text-foreground">
+                    No pension record found
+                  </h1>
+                  <p className="mt-1.5 text-base text-muted-foreground">
+                    We couldn't find any pension information linked to your
+                    account.
+                  </p>
+                  <div className="mt-4 flex flex-wrap items-center gap-2">
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 text-xs font-medium">
+                      <Check className="w-3.5 h-3.5" />
+                      Signed in
+                    </span>
+                    <span className="text-base text-foreground font-medium break-all">
+                      {signedInEmail ?? "your account"}
+                    </span>
+                  </div>
+                </div>
+              </div>
             </div>
 
-            <div className="px-6 py-5 space-y-4">
+            <div className="px-8 py-7 space-y-6">
               <div>
-                <h2 className="text-sm font-semibold text-foreground mb-2">
+                <h2 className="text-base font-semibold text-foreground mb-2">
                   Why am I seeing this?
                 </h2>
-                <ul className="text-sm text-muted-foreground space-y-1 list-disc pl-5">
+                <ul className="text-sm text-muted-foreground space-y-1.5 list-disc pl-5">
                   <li>
                     Your pension record may not have been created yet in the
                     system.
@@ -271,7 +293,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
               </div>
 
               <div>
-                <h2 className="text-sm font-semibold text-foreground mb-2">
+                <h2 className="text-base font-semibold text-foreground mb-2">
                   What can I do?
                 </h2>
                 {supportEmail ? (
