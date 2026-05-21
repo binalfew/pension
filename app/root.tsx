@@ -37,7 +37,14 @@ export async function loader({ request }: Route.LoaderArgs) {
   const resolvedUser = await resolveUserByEmail(userEmail);
 
   if (!resolvedUser) {
-    return data({ user: undefined });
+    return data({
+      user: {
+        id: userEmail,
+        email: userEmail,
+        username: userEmail,
+        name: userEmail,
+      },
+    });
   }
 
   const { user, role } = resolvedUser;

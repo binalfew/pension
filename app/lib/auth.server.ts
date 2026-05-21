@@ -27,13 +27,35 @@ let microsoftStrategy = new MicrosoftStrategy(
     clientSecret: process.env.MICROSOFT_CLIENT_SECRET,
     tenantId: process.env.MICROSOFT_TENANT_ID,
     redirectURI: process.env.MICROSOFT_REDIRECT_URI,
-    scopes: ["openid", "profile", "email"],
+    scopes: ["openid", "profile", "email", "User.Read"],
     prompt: "login",
   },
   async ({ tokens }) => {
     let accessToken = tokens.accessToken();
     let profile = await MicrosoftStrategy.userProfile(accessToken);
-    const email = profile.emails?.[0]?.value.trim().toLowerCase();
+
+    let rawEmail = profile.emails?.[0]?.value;
+
+    if (!rawEmail) {
+      const graphRes = await fetch("https://graph.microsoft.com/v1.0/me", {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (graphRes.ok) {
+        const me = (await graphRes.json()) as {
+          mail?: string;
+          userPrincipalName?: string;
+        };
+        rawEmail = me.mail ?? me.userPrincipalName;
+      } else {
+        console.error(
+          "[microsoft] graph /me failed",
+          graphRes.status,
+          await graphRes.text()
+        );
+      }
+    }
+
+    const email = rawEmail?.trim().toLowerCase();
     if (!email) {
       throw redirect("/login");
     }
@@ -42,7 +64,7 @@ let microsoftStrategy = new MicrosoftStrategy(
       id: profile.id,
       email,
       username: profile.displayName,
-      name: profile.name.givenName,
+      name: profile.name?.givenName ?? profile.displayName ?? email,
     };
   }
 );

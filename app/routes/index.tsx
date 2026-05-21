@@ -42,6 +42,7 @@ export function meta({}: Route.MetaArgs) {
 
 export async function loader({ request }: Route.LoaderArgs) {
   const userEmail = await getUserEmail(request);
+  const supportEmail = process.env.PENSION_SUPPORT_EMAIL ?? null;
 
   // If no user email in session, show welcome page
   if (!userEmail) {
@@ -52,6 +53,8 @@ export async function loader({ request }: Route.LoaderArgs) {
       contributions: null,
       computedInterests: null,
       error: null,
+      signedInEmail: null,
+      supportEmail,
     });
   }
 
@@ -66,7 +69,9 @@ export async function loader({ request }: Route.LoaderArgs) {
       total: null,
       contributions: null,
       computedInterests: null,
-      error: "User not found in system",
+      error: "no-pension-record",
+      signedInEmail: userEmail,
+      supportEmail,
     });
   }
 
@@ -186,6 +191,10 @@ export default function Home({ loaderData }: Route.ComponentProps) {
 
   const { user, statement, total, contributions, computedInterests, error } =
     loaderData;
+  const signedInEmail =
+    "signedInEmail" in loaderData ? loaderData.signedInEmail : null;
+  const supportEmail =
+    "supportEmail" in loaderData ? loaderData.supportEmail : null;
 
   const suggestions = searchFetcher.data?.suggestions || [];
 
@@ -215,6 +224,95 @@ export default function Home({ loaderData }: Route.ComponentProps) {
 
   // Show welcome page for unauthenticated users
   if (!user) {
+    if (error === "no-pension-record") {
+      const mailtoSubject = encodeURIComponent(
+        "Pension portal access request"
+      );
+      const mailtoBody = encodeURIComponent(
+        `Hello,\n\nI signed in to the AU Pension portal with ${signedInEmail ?? "my account"} but no pension record was found for this account. Could you please check whether my pension record is set up under a different email address, or arrange for it to be created?\n\nThank you.`
+      );
+
+      return (
+        <div className="max-w-2xl mx-auto py-12">
+          <div className="rounded-lg border border-border bg-card shadow-sm overflow-hidden">
+            <div className="px-6 py-5 border-b border-border bg-muted/30">
+              <h1 className="text-xl font-semibold text-foreground">
+                No pension record found
+              </h1>
+              <p className="mt-1 text-sm text-muted-foreground">
+                You signed in successfully, but we couldn't find any pension
+                information linked to{" "}
+                <span className="font-medium text-foreground">
+                  {signedInEmail ?? "your account"}
+                </span>
+                .
+              </p>
+            </div>
+
+            <div className="px-6 py-5 space-y-4">
+              <div>
+                <h2 className="text-sm font-semibold text-foreground mb-2">
+                  Why am I seeing this?
+                </h2>
+                <ul className="text-sm text-muted-foreground space-y-1 list-disc pl-5">
+                  <li>
+                    Your pension record may not have been created yet in the
+                    system.
+                  </li>
+                  <li>
+                    Your pension record may exist under a different email
+                    address than the one used to sign in.
+                  </li>
+                  <li>
+                    Recent changes to your account may not yet be reflected in
+                    the pension system.
+                  </li>
+                </ul>
+              </div>
+
+              <div>
+                <h2 className="text-sm font-semibold text-foreground mb-2">
+                  What can I do?
+                </h2>
+                {supportEmail ? (
+                  <p className="text-sm text-muted-foreground">
+                    Please contact the Pension Office at{" "}
+                    <a
+                      href={`mailto:${supportEmail}?subject=${mailtoSubject}&body=${mailtoBody}`}
+                      className="font-medium text-primary hover:underline"
+                    >
+                      {supportEmail}
+                    </a>{" "}
+                    so they can verify your record. Mention the email address
+                    you used to sign in.
+                  </p>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    Please contact the Pension Office and mention the email
+                    address you used to sign in so they can verify your
+                    record.
+                  </p>
+                )}
+              </div>
+
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (error) {
+      return (
+        <div className="max-w-4xl mx-auto space-y-6">
+          <div className="p-6 bg-destructive/10 border border-destructive/20 rounded-lg">
+            <h2 className="text-lg font-semibold text-destructive mb-2">
+              Access Error
+            </h2>
+            <p className="text-destructive/80">{error}</p>
+          </div>
+        </div>
+      );
+    }
     return <Welcome />;
   }
 
