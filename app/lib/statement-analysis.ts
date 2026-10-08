@@ -177,6 +177,86 @@ export function getMonthlyBalances(
   return { opening, months, interestThrough };
 }
 
+export type MonthRow = {
+  sapId: number;
+  // YYYYMM, or the 2015-2017 sentinel
+  period: number;
+  employee: number;
+  employer: number;
+  voluntary: number;
+  // Any other account, such as the 2015-2017 arrears
+  other: number;
+  interest: number;
+  total: number;
+  // The employee contributed but there is no employer contribution
+  missingEmployerShare: boolean;
+  // Contribution records making up the month
+  records: ContributionView[];
+};
+
+// One row per SAP ID and month, combining the month's contributions and
+// interest. Most recent first, with the 2015-2017 opening balance last.
+export function getMonthRows(
+  contributions: ContributionView[],
+  computedInterests: ComputedInterest[]
+): MonthRow[] {
+  const rows = new Map<string, MonthRow>();
+  const rowFor = (sapId: number, period: number) => {
+    const key = `${sapId}-${period}`;
+    let row = rows.get(key);
+    if (!row) {
+      row = {
+        sapId,
+        period,
+        employee: 0,
+        employer: 0,
+        voluntary: 0,
+        other: 0,
+        interest: 0,
+        total: 0,
+        missingEmployerShare: false,
+        records: [],
+      };
+      rows.set(key, row);
+    }
+    return row;
+  };
+
+  for (const contribution of contributions) {
+    const row = rowFor(contribution.SAPID, contribution.ForPeriod);
+    const name = contribution.ContributionTypeName;
+    if (name === EMPLOYEE_ACCOUNT) {
+      row.employee += contribution.Amount;
+    } else if (name === EMPLOYER_ACCOUNT) {
+      row.employer += contribution.Amount;
+    } else if (name.includes("VOLUNTARY")) {
+      row.voluntary += contribution.Amount;
+    } else {
+      row.other += contribution.Amount;
+    }
+    row.total += contribution.Amount;
+    row.records.push(contribution);
+  }
+  for (const interest of computedInterests) {
+    const row = rowFor(interest.SAPID, interest.YearMonth);
+    row.interest += interest.Interest;
+    row.total += interest.Interest;
+  }
+
+  for (const row of rows.values()) {
+    const accounts = new Set(row.records.map((r) => r.ContributionTypeName));
+    row.missingEmployerShare =
+      isMonthPeriod(row.period) &&
+      accounts.has(EMPLOYEE_ACCOUNT) &&
+      !accounts.has(EMPLOYER_ACCOUNT);
+  }
+
+  return [...rows.values()].sort(
+    (a, b) =>
+      periodSortKey(b.period) - periodSortKey(a.period) || a.sapId - b.sapId
+  );
+}
+
 export type ContributionGap = {
   sapId: number;
   // First and last affected month (YYYYMM)

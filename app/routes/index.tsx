@@ -404,7 +404,6 @@ export default function Home({ loaderData }: Route.ComponentProps) {
               // Start with fresh filters when switching statements
               key={statement.SapIds.join("-")}
               statement={statement}
-              total={total}
               contributions={contributions}
               computedInterests={computedInterests}
               supportEmail={supportEmail}
@@ -442,7 +441,6 @@ export default function Home({ loaderData }: Route.ComponentProps) {
             // Start with fresh filters when switching statements
             key={statement.SapIds.join("-")}
             statement={statement}
-            total={total}
             contributions={contributions}
             computedInterests={computedInterests}
             supportEmail={supportEmail}

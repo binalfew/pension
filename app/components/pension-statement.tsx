@@ -1,35 +1,25 @@
 import { Calendar, Download, Hash, User } from "lucide-react";
 import { BalanceHistory } from "~/components/balance-history";
 import { ContributionGaps } from "~/components/contribution-gaps";
+import { StatementSummary } from "~/components/statement-summary";
 import { TransactionsTable } from "~/components/transactions-table";
-import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "~/components/ui/table";
 import {
   findContributionGaps,
   getAnnualSummary,
   getMonthlyBalances,
 } from "~/lib/statement-analysis";
-import { formatAmount, formatPeriod } from "~/lib/utils";
+import { formatPeriod } from "~/lib/utils";
 import type { ComputedInterest } from "~/types/computed-interest";
 import type { ContributionView } from "~/types/contribution-view";
-import type { Account, Statement } from "~/types/statement";
+import type { Statement } from "~/types/statement";
 
 export function PensionStatement({
   statement,
-  total,
   contributions,
   computedInterests,
   supportEmail,
 }: {
   statement: Statement;
-  total: Account;
   contributions: ContributionView[];
   computedInterests: ComputedInterest[];
   supportEmail: string | null;
@@ -101,80 +91,19 @@ export function PensionStatement({
         supportEmail={supportEmail}
       />
 
-      {/* Pension Statement Card */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="flex items-center justify-between text-base">
-            <span>
-              {isCombined ? "Combined Pension Statement" : "Pension Statement"}
-            </span>
-            <div className="flex items-center gap-2">
-              <span className="text-lg font-bold text-primary">
-                ${formatAmount(total.Balance)}
-              </span>
-            </div>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          <div className="divide-y">
-            {statement.Accounts.filter(
-              (acc) => acc.AccountName !== "TOTAL"
-            ).map((acc) => (
-              <div
-                key={acc.AccountName}
-                className="flex items-center justify-between px-4 py-2 hover:bg-muted/30 transition-colors"
-              >
-                <span className="font-medium text-sm">{acc.AccountName}</span>
-                <span className="font-semibold text-sm">
-                  ${formatAmount(acc.Balance)}
-                </span>
-              </div>
-            ))}
-
-            {/* Total Row */}
-            <div className="flex items-center justify-between px-4 py-3 bg-primary/5 font-bold rounded-b-lg">
-              <span className="text-sm">TOTAL BALANCE</span>
-              <span className="text-primary">
-                $
-                {formatAmount(
-                  statement.Accounts.find((acc) => acc.AccountName === "TOTAL")
-                    ?.Balance ?? 0
-                )}
-              </span>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      <StatementSummary
+        title={isCombined ? "Combined Pension Statement" : "Pension Statement"}
+        accounts={statement.Accounts}
+        history={balanceHistory}
+      />
 
       <BalanceHistory rows={annualSummary} history={balanceHistory} />
 
-      <TransactionsTable contributions={contributions} showSapId={isCombined} />
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Computed Interests</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                {isCombined && <TableHead>SAP ID</TableHead>}
-                <TableHead>Year Month</TableHead>
-                <TableHead>Interest</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {computedInterests.map((interest) => (
-                <TableRow key={interest.ID}>
-                  {isCombined && <TableCell>{interest.SAPID}</TableCell>}
-                  <TableCell>{formatPeriod(interest.YearMonth)}</TableCell>
-                  <TableCell>${formatAmount(interest.Interest)}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+      <TransactionsTable
+        contributions={contributions}
+        computedInterests={computedInterests}
+        showSapId={isCombined}
+      />
     </>
   );
 }

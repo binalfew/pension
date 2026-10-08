@@ -302,30 +302,6 @@ function TooltipRow({
   );
 }
 
-function Stat({
-  label,
-  value,
-  signed,
-}: {
-  label: string;
-  value: number;
-  signed?: boolean;
-}) {
-  return (
-    <div className="rounded-lg border bg-muted/30 px-4 py-3">
-      <div className="text-xs font-medium text-muted-foreground">{label}</div>
-      <div
-        className={cn(
-          "mt-1 text-lg font-semibold tabular-nums",
-          value < 0 && "text-destructive"
-        )}
-      >
-        {signed && value > 0 ? "+" : ""}${formatAmount(value)}
-      </div>
-    </div>
-  );
-}
-
 function Amount({ value, className }: { value: number; className?: string }) {
   return (
     <TableCell
@@ -435,22 +411,6 @@ export function BalanceHistory({
     return null;
   }
 
-  const latest = months[months.length - 1];
-  const contributed = latest?.contributionsToDate ?? opening;
-  const interest = latest?.interestToDate ?? 0;
-  // Change over the last 12 months, or since the first month for shorter
-  // histories
-  const hasFullYear = months.length > 12;
-  const recentChange = latest
-    ? latest.balance -
-      (hasFullYear ? months[months.length - 13].balance : opening)
-    : 0;
-  const recentLabel = hasFullYear
-    ? "Last 12 months"
-    : months.length > 0
-    ? `Since ${formatPeriod(months[0].period)}`
-    : "Recent change";
-
   return (
     <Card>
       <CardHeader className="pb-2">
@@ -459,14 +419,7 @@ export function BalanceHistory({
           <ViewToggle view={view} onChange={setView} />
         </div>
       </CardHeader>
-      <CardContent className="space-y-5">
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          <Stat label="Current balance" value={contributed + interest} />
-          <Stat label="Total contributed" value={contributed} />
-          <Stat label="Interest earned" value={interest} />
-          <Stat label={recentLabel} value={recentChange} signed />
-        </div>
-
+      <CardContent>
         {view === "table" ? (
           <div className="-mx-6 border-t">
             <AnnualTable rows={rows} />
