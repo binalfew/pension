@@ -1,7 +1,14 @@
 import { Loader2 } from "lucide-react";
-import { useEffect, useRef } from "react";
-import { Form, redirect, useNavigation, useRevalidator } from "react-router";
+import { useEffect, useRef, useState } from "react";
+import {
+  Form,
+  redirect,
+  useNavigate,
+  useNavigation,
+  useRevalidator,
+} from "react-router";
 import { StatusButton } from "~/components/status-button";
+import { Button } from "~/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
 import { Input } from "~/components/ui/input";
 import {
@@ -90,7 +97,9 @@ export default function ContributionsUpload({
   const { history } = loaderData;
   const navigation = useNavigation();
   const revalidator = useRevalidator();
+  const navigate = useNavigate();
   const formRef = useRef<HTMLFormElement>(null);
+  const [hasFile, setHasFile] = useState(false);
   const submittingIntent =
     navigation.state === "submitting"
       ? navigation.formData?.get("intent")
@@ -126,8 +135,17 @@ export default function ContributionsUpload({
   useEffect(() => {
     if (result) {
       formRef.current?.reset();
+      setHasFile(false);
     }
   }, [result]);
+
+  // Empty the file input and navigate to the page again, which drops the
+  // preview, result or error shown from the last submit
+  function clearUpload() {
+    formRef.current?.reset();
+    setHasFile(false);
+    navigate(".", { replace: true });
+  }
 
   return (
     <div className="space-y-6">
@@ -155,6 +173,9 @@ export default function ContributionsUpload({
               accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
               required
               className="sm:flex-1"
+              onChange={(event) =>
+                setHasFile((event.currentTarget.files?.length ?? 0) > 0)
+              }
             />
             <StatusButton
               type="submit"
@@ -166,6 +187,16 @@ export default function ContributionsUpload({
             >
               Preview
             </StatusButton>
+            {(hasFile || actionData) && (
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={clearUpload}
+                disabled={navigation.state !== "idle"}
+              >
+                Clear
+              </Button>
+            )}
           </CardContent>
         </Card>
 
