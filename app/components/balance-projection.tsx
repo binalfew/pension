@@ -130,12 +130,10 @@ export function BalanceProjection({
               This is an illustration, not a guarantee or an entitlement.
             </p>
             <p>
-              It assumes the same contribution every month and a constant
-              interest rate, compounded monthly. Actual interest is declared by
-              the fund and varies from year to year; salary changes, breaks in
-              service, withdrawals and the pension rules all affect what you
-              receive. Amounts are not adjusted for inflation. For an official
-              figure, contact the Pension Office.
+              It assumes the same contribution every month. Salary changes,
+              breaks in service, withdrawals and the pension rules all affect
+              what you receive. Amounts are not adjusted for inflation. For an
+              official figure, contact the Pension Office.
             </p>
           </div>
         </div>
