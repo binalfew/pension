@@ -7,11 +7,11 @@ import { Logo } from "./logo";
 import { Separator } from "./ui/separator";
 
 const navItems = [
-  { to: "/overview", label: "Overview" },
-  { to: "/", label: "Statement" },
+  { to: "/", label: "Overview" },
+  { to: "/statement", label: "Statement" },
   { to: "/contributions-upload", label: "Upload" },
   { to: "/data-quality", label: "Quality" },
-  { to: "/sign-in-check", label: "Sign-in check" },
+  { to: "/diagnosis", label: "Diagnosis" },
 ];
 
 const navLinkClass = ({ isActive }: { isActive: boolean }) =>

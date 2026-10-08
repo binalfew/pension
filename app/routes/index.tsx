@@ -1,470 +1,422 @@
-import { AlertTriangle, Check, Info, Search } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
 import {
-  data,
-  Form,
-  useFetcher,
-  useSearchParams,
-  useSubmit,
-} from "react-router";
-import { PensionStatement } from "~/components/pension-statement";
-import { SapIdSwitcher } from "~/components/sap-id-switcher";
-import { StatusButton } from "~/components/status-button";
-import { Card, CardContent } from "~/components/ui/card";
-import { Input } from "~/components/ui/input";
-import { Label } from "~/components/ui/label";
-import Welcome from "~/components/welcome";
+  AlertTriangle,
+  BarChart3,
+  CheckCircle2,
+  Clock,
+  KeyRound,
+  Percent,
+  ShieldCheck,
+  Upload,
+  Users,
+  Wallet,
+  XCircle,
+  type LucideIcon,
+} from "lucide-react";
+import { useState } from "react";
+import { Link, redirect } from "react-router";
+import {
+  badgeTone,
+  iconTone,
+  type BadgeTone,
+} from "~/components/table-styles";
+import { formatUploadTime, STATUS } from "~/components/upload-history";
+import { Badge } from "~/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
 import { getUserEmail } from "~/lib/auth.server";
-import { getSapIdSummaries, resolveUserByEmail } from "~/lib/db.server";
-import { selectStatement } from "~/lib/statement-access.server";
-import { useDebounce, useIsPending } from "~/lib/utils";
+import { getUploadHistory } from "~/lib/contribution-upload.server";
+import { getSystemOverview, resolveUserByEmail } from "~/lib/db.server";
+import {
+  monthlySeries,
+  monthsBetween,
+  type SeriesMonth,
+} from "~/lib/overview";
+import { cn, formatAmount, formatPeriod } from "~/lib/utils";
 import type { Route } from "./+types/index";
 
 export function meta({}: Route.MetaArgs) {
-  return [
-    { title: "AU Pension" },
-    {
-      name: "description",
-      content:
-        "Manage your pension plans, track contributions, and plan for your retirement",
-    },
-  ];
+  return [{ title: "Overview | AU Pension" }];
 }
 
 export async function loader({ request }: Route.LoaderArgs) {
   const userEmail = await getUserEmail(request);
-  const supportEmail = process.env.PENSION_SUPPORT_EMAIL ?? null;
+  const resolvedUser = userEmail ? await resolveUserByEmail(userEmail) : null;
 
-  // If no user email in session, show welcome page
-  if (!userEmail) {
-    return data({
-      user: null,
-      statement: null,
-      total: null,
-      contributions: null,
-      computedInterests: null,
-      error: null,
-      signedInEmail: null,
-      supportEmail,
-    });
+  // Only admins (the pension office) can see system-wide figures
+  if (resolvedUser?.role !== "Admin") {
+    throw redirect("/statement");
   }
 
-  // Resolve user from both tables
-  const resolvedUser = await resolveUserByEmail(userEmail);
-
-  // If user not found in either table, show appropriate message
-  if (!resolvedUser) {
-    return data({
-      user: null,
-      statement: null,
-      total: null,
-      contributions: null,
-      computedInterests: null,
-      error: "no-pension-record",
-      signedInEmail: userEmail,
-      supportEmail,
-    });
-  }
-
-  const { user, role } = resolvedUser;
-  const selection = await selectStatement(
-    resolvedUser,
-    new URL(request.url).searchParams,
-    // Only allow selecting one of the pensioner's own SAP IDs
-    { fallbackToOwn: true }
-  );
-
-  // Admin with no sapId param
-  if (selection.status === "none") {
-    return data({
-      user: { ...user, Role: role },
-      statement: null,
-      total: null,
-      contributions: null,
-      computedInterests: null,
-      error: null,
-      supportEmail,
-    });
-  }
-
-  if (selection.status === "error") {
-    return data({
-      user: { ...user, Role: role },
-      statement: null,
-      total: null,
-      contributions: null,
-      computedInterests: null,
-      error: selection.message,
-      supportEmail,
-    });
-  }
-
-  return data({
-    // Pensioners see the SAP ID record being viewed
-    user: { ...(selection.account ?? user), Role: role },
-    sapIdSummaries: await getSapIdSummaries(selection.personSapIds),
-    ...selection.statementData,
-    error: null,
-    supportEmail,
-  });
+  const [overview, [lastUpload]] = await Promise.all([
+    getSystemOverview(),
+    getUploadHistory(1),
+  ]);
+  return { overview, lastUpload: lastUpload ?? null };
 }
 
-export default function Home({ loaderData }: Route.ComponentProps) {
-  const handler = "/";
-  const autoSubmit = false;
-  const [searchParams] = useSearchParams();
-  const submit = useSubmit();
-  const searchFetcher = useFetcher();
-  const [showDropdown, setShowDropdown] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+const compactAmount = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  notation: "compact",
+  maximumFractionDigits: 1,
+});
 
-  const isSubmitting = useIsPending({
-    formMethod: "GET",
-    formAction: handler,
-  });
+// Interest this many months behind the latest payroll is expected (the job
+// runs after the month closes); more is worth chasing
+const INTEREST_LAG_OK = 2;
+const INTEREST_LAG_WARNING = 6;
 
-  const handleFormChange = useDebounce((form: HTMLFormElement) => {
-    const formData = new FormData(form);
-    const filteredData = new URLSearchParams();
-
-    // Preserve existing search params
-    for (const [key, value] of formData.entries()) {
-      if (typeof value === "string" && value.trim() !== "") {
-        filteredData.append(key, value);
-      }
-    }
-
-    submit(filteredData, { method: "GET", action: handler });
-  }, 400);
-
-  const handleSearchInput = useDebounce((value: string) => {
-    if (value && value.trim().length >= 2) {
-      searchFetcher.load(`/api/search?q=${encodeURIComponent(value.trim())}`);
-      setShowDropdown(true);
-    } else {
-      setShowDropdown(false);
-    }
-  }, 300);
-
-  const { user, statement, total, contributions, computedInterests, error } =
-    loaderData;
-  const signedInEmail =
-    "signedInEmail" in loaderData ? loaderData.signedInEmail : null;
-  const supportEmail =
-    "supportEmail" in loaderData ? loaderData.supportEmail : null;
-  const sapIdSummaries =
-    "sapIdSummaries" in loaderData ? loaderData.sapIdSummaries : [];
-  // Across all of the person's SAP IDs, whichever statement is shown
-  const combinedBalance =
-    sapIdSummaries.length > 0
-      ? sapIdSummaries.reduce((sum, summary) => sum + summary.Balance, 0)
-      : total?.Balance ?? 0;
-
-  const suggestions = searchFetcher.data?.suggestions || [];
-
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (
-        dropdownRef.current &&
-        !dropdownRef.current.contains(event.target as Node)
-      ) {
-        setShowDropdown(false);
-      }
-    }
-
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, []);
-
-  // Close dropdown when suggestions change to empty
-  useEffect(() => {
-    if (suggestions.length === 0) {
-      setShowDropdown(false);
-    }
-  }, [suggestions.length]);
-
-  // Show welcome page for unauthenticated users
-  if (!user) {
-    if (error === "no-pension-record") {
-      const mailtoSubject = encodeURIComponent(
-        "Pension portal access request"
-      );
-      const mailtoBody = encodeURIComponent(
-        `Hello,\n\nI signed in to the AU Pension portal with ${signedInEmail ?? "my account"} but no pension record was found for this account. Could you please check whether my pension record is set up under a different email address, or arrange for it to be created?\n\nThank you.`
-      );
-
-      return (
-        <div className="max-w-3xl mx-auto py-8 sm:py-16">
-          <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
-            <div className="px-5 py-6 sm:px-8 sm:py-7 border-b border-border bg-muted/30">
-              <div className="flex items-start gap-4">
-                <div className="hidden flex-shrink-0 mt-0.5 sm:block">
-                  <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-                    <Info className="w-6 h-6 text-primary" />
-                  </div>
-                </div>
-                <div className="min-w-0 flex-1">
-                  <h1 className="text-2xl font-semibold text-foreground">
-                    No pension record found
-                  </h1>
-                  <p className="mt-1.5 text-base text-muted-foreground">
-                    We couldn't find any pension information linked to your
-                    account.
-                  </p>
-                  <div className="mt-4 flex flex-wrap items-center gap-2">
-                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 text-xs font-medium">
-                      <Check className="w-3.5 h-3.5" />
-                      Signed in
-                    </span>
-                    <span className="text-base text-foreground font-medium break-all">
-                      {signedInEmail ?? "your account"}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="px-5 py-6 sm:px-8 sm:py-7 space-y-6">
-              <div>
-                <h2 className="text-base font-semibold text-foreground mb-2">
-                  Why am I seeing this?
-                </h2>
-                <ul className="text-sm text-muted-foreground space-y-1.5 list-disc pl-5">
-                  <li>
-                    Your pension record may not have been created yet in the
-                    system.
-                  </li>
-                  <li>
-                    Your pension record may exist under a different email
-                    address than the one used to sign in.
-                  </li>
-                  <li>
-                    Recent changes to your account may not yet be reflected in
-                    the pension system.
-                  </li>
-                </ul>
-              </div>
-
-              <div>
-                <h2 className="text-base font-semibold text-foreground mb-2">
-                  What can I do?
-                </h2>
-                {supportEmail ? (
-                  <p className="text-sm text-muted-foreground">
-                    Please contact the Pension Office at{" "}
-                    <a
-                      href={`mailto:${supportEmail}?subject=${mailtoSubject}&body=${mailtoBody}`}
-                      className="font-medium text-primary hover:underline"
-                    >
-                      {supportEmail}
-                    </a>{" "}
-                    so they can verify your record. Mention the email address
-                    you used to sign in.
-                  </p>
-                ) : (
-                  <p className="text-sm text-muted-foreground">
-                    Please contact the Pension Office and mention the email
-                    address you used to sign in so they can verify your
-                    record.
-                  </p>
-                )}
-              </div>
-
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    if (error) {
-      return (
-        <div className="max-w-4xl mx-auto space-y-6">
-          <div className="flex gap-3 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-            <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-            <p>{error}</p>
-          </div>
-        </div>
-      );
-    }
-    return <Welcome supportEmail={supportEmail} />;
-  }
-
-  // For admin users - always show the admin interface with search
-  if (user.Role === "Admin") {
-    return (
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-semibold">Pension statement</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Look up a pensioner by SAP ID or name to see their statement,
-            balance history and monthly contributions.
-          </p>
-        </div>
-
-        <Card>
-          <CardContent>
-            <Form
-              method="GET"
-              action={handler}
-              className="flex flex-col gap-4"
-              onChange={(e) => autoSubmit && handleFormChange(e.currentTarget)}
-              onSubmit={(e) => {
-                e.preventDefault();
-                handleFormChange(e.currentTarget);
-              }}
-            >
-              <div className="flex items-center gap-2">
-                <div className="flex-1 relative" ref={dropdownRef}>
-                  <Label htmlFor="sapId" className="sr-only">
-                    Search
-                  </Label>
-                  <Input
-                    ref={inputRef}
-                    type="search"
-                    name="sapId"
-                    id="sapId"
-                    defaultValue={searchParams.get("sapId") ?? ""}
-                    placeholder="Enter SAP ID or name to search"
-                    className="w-full"
-                    onChange={(e) => handleSearchInput(e.target.value)}
-                    onFocus={() => {
-                      if (suggestions.length > 0) {
-                        setShowDropdown(true);
-                      }
-                    }}
-                  />
-
-                  {/* Autocomplete suggestions */}
-                  {showDropdown && suggestions.length > 0 && (
-                    <div className="absolute top-full left-0 right-0 bg-background border border-border rounded-md shadow-lg z-10 max-h-60 overflow-y-auto">
-                      {suggestions.map(
-                        (suggestion: {
-                          SAPID: number;
-                          FullName: string;
-                          Email: string;
-                        }) => (
-                          <button
-                            key={suggestion.SAPID}
-                            type="button"
-                            className="w-full px-3 py-2 text-left hover:bg-muted/50 focus:bg-muted/50 focus:outline-none"
-                            onClick={() => {
-                              const form = document.querySelector(
-                                'form[method="GET"]'
-                              ) as HTMLFormElement;
-                              const input = form?.querySelector(
-                                'input[name="sapId"]'
-                              ) as HTMLInputElement;
-                              if (input) {
-                                input.value = suggestion.SAPID.toString();
-                                setShowDropdown(false);
-                                handleFormChange(form);
-                              }
-                            }}
-                          >
-                            <div className="font-medium">
-                              {suggestion.FullName}
-                            </div>
-                            <div className="text-sm text-muted-foreground">
-                              SAP ID: {suggestion.SAPID} • {suggestion.Email}
-                            </div>
-                          </button>
-                        )
-                      )}
-                    </div>
-                  )}
-                </div>
-                <StatusButton
-                  type="submit"
-                  status={isSubmitting ? "pending" : "idle"}
-                  className="flex cursor-pointer items-center justify-center"
-                  size="sm"
-                >
-                  <Search className="h-4 w-4" />
-                  <span className="sr-only">Search</span>
-                </StatusButton>
-              </div>
-            </Form>
-          </CardContent>
-        </Card>
-
-        {/* Show error message if there's an error */}
-        {error && (
-          <div className="flex gap-3 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-            <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-            <p>{error}</p>
-          </div>
-        )}
-
-        {/* Show statement if available */}
-        {statement && total && contributions && computedInterests && (
-          <SapIdSwitcher
-            summaries={sapIdSummaries}
-            currentSapId={statement.SapIds[0]}
-            isCombined={statement.SapIds.length > 1}
-          >
-            <PensionStatement
-              // Start with fresh filters when switching statements
-              key={statement.SapIds.join("-")}
-              statement={statement}
-              contributions={contributions}
-              computedInterests={computedInterests}
-              combinedBalance={combinedBalance}
-              supportEmail={supportEmail}
-            />
-          </SapIdSwitcher>
-        )}
-      </div>
-    );
-  }
-
-  // For non-admin users, show error message if there's an error
-  if (error) {
-    return (
-      <div className="max-w-4xl mx-auto space-y-6">
-        <div className="flex gap-3 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-          <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-          <p>{error}</p>
-        </div>
-      </div>
-    );
-  }
-
-  // For pensioner users with pension statements
-  if (statement && total && contributions && computedInterests) {
-    return (
-      <div className="space-y-6">
-        <SapIdSwitcher
-          summaries={sapIdSummaries}
-          currentSapId={statement.SapIds[0]}
-          isCombined={statement.SapIds.length > 1}
-        >
-          <PensionStatement
-            // Start with fresh filters when switching statements
-            key={statement.SapIds.join("-")}
-            statement={statement}
-            contributions={contributions}
-            computedInterests={computedInterests}
-            combinedBalance={combinedBalance}
-            supportEmail={supportEmail}
-          />
-        </SapIdSwitcher>
-      </div>
-    );
-  }
-
-  // Fallback for unexpected states
+function StatTile({
+  icon: Icon,
+  label,
+  value,
+  detail,
+}: {
+  icon: LucideIcon;
+  label: string;
+  value: string;
+  detail?: string;
+}) {
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      <div className="p-6 bg-muted/10 border border-muted/20 rounded-lg">
-        <h2 className="text-lg font-semibold mb-2">No Data Available</h2>
-        <p className="text-muted-foreground">
-          No pension statement data is available for your account.
+    <div className="flex items-center gap-4 rounded-xl border bg-card p-4 shadow-sm sm:p-5">
+      <div
+        className={cn(
+          "hidden size-11 shrink-0 items-center justify-center rounded-lg sm:flex",
+          iconTone.success
+        )}
+      >
+        <Icon className="size-5" />
+      </div>
+      <div className="min-w-0">
+        <p className="text-sm text-muted-foreground">{label}</p>
+        <p className="text-2xl font-semibold tabular-nums">{value}</p>
+        {detail && <p className="text-xs text-muted-foreground">{detail}</p>}
+      </div>
+    </div>
+  );
+}
+
+const toneIcon: Record<BadgeTone, LucideIcon> = {
+  success: CheckCircle2,
+  info: Clock,
+  warning: AlertTriangle,
+  danger: XCircle,
+  neutral: Clock,
+};
+
+function StatusRow({
+  icon: Icon,
+  title,
+  value,
+  tone,
+  badge,
+  children,
+}: {
+  icon: LucideIcon;
+  title: string;
+  value: string;
+  tone: BadgeTone;
+  badge: string;
+  children: React.ReactNode;
+}) {
+  const BadgeIcon = toneIcon[tone];
+  return (
+    <li className="flex gap-4 px-4 py-3 sm:px-6">
+      <Icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+      <div className="min-w-0 flex-1 space-y-1">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span className="text-sm text-muted-foreground">{title}</span>
+          <span className="font-semibold">{value}</span>
+          <Badge className={badgeTone[tone]}>
+            <BadgeIcon />
+            {badge}
+          </Badge>
+        </div>
+        <div className="text-sm text-muted-foreground">{children}</div>
+      </div>
+    </li>
+  );
+}
+
+function PayrollChart({ series }: { series: SeriesMonth[] }) {
+  const [selected, setSelected] = useState(series.length - 1);
+  const max = Math.max(1, ...series.map((month) => month.total));
+  const active = series[selected];
+
+  return (
+    <div className="space-y-3">
+      <div className="flex h-48 items-end gap-0.5 sm:gap-1">
+        {series.map((month, index) => (
+          <button
+            key={month.period}
+            type="button"
+            onClick={() => setSelected(index)}
+            onMouseEnter={() => setSelected(index)}
+            aria-label={`${formatPeriod(month.period)}: ${
+              month.missing ? "nothing loaded" : `$${formatAmount(month.total)}`
+            }`}
+            aria-pressed={index === selected}
+            className="group flex h-full min-w-0 flex-1 cursor-pointer items-end"
+          >
+            <span
+              className={cn(
+                "w-full rounded-t-sm transition-colors",
+                month.missing
+                  ? "h-full border border-dashed border-destructive/60 bg-destructive/5"
+                  : month.drop
+                  ? "bg-amber-400 group-hover:bg-amber-500"
+                  : index === selected
+                  ? "bg-primary"
+                  : "bg-primary/40 group-hover:bg-primary/60"
+              )}
+              style={
+                month.missing
+                  ? undefined
+                  : { height: `${Math.max(2, (month.total / max) * 100)}%` }
+              }
+            />
+          </button>
+        ))}
+      </div>
+      <div className="flex h-4 gap-0.5 text-[11px] text-muted-foreground sm:gap-1">
+        {series.map((month) => {
+          const monthNumber = month.period % 100;
+          return (
+            <span key={month.period} className="relative min-w-0 flex-1">
+              {/* Every quarter on wider screens, every half year on phones */}
+              <span
+                className={cn(
+                  "absolute left-1/2 -translate-x-1/2 whitespace-nowrap",
+                  monthNumber % 3 !== 1 && "invisible",
+                  monthNumber % 6 !== 1 && "max-sm:invisible"
+                )}
+              >
+                {formatPeriod(month.period).replace(/ (\d\d)(\d\d)$/, " ’$2")}
+              </span>
+            </span>
+          );
+        })}
+      </div>
+      {active && (
+        <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 rounded-lg border bg-muted/30 px-4 py-2.5 text-sm">
+          <span className="font-semibold">{formatPeriod(active.period)}</span>
+          {active.missing ? (
+            <span className="text-destructive">
+              Nothing loaded for this payroll month.
+            </span>
+          ) : (
+            <>
+              <span className="tabular-nums">${formatAmount(active.total)}</span>
+              <span className="text-muted-foreground">
+                {active.people.toLocaleString()} people ·{" "}
+                {active.entries.toLocaleString()} entries
+              </span>
+              {active.drop && (
+                <Badge className={badgeTone.warning}>
+                  <AlertTriangle />
+                  Fewer people than the month before
+                </Badge>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function Overview({ loaderData }: Route.ComponentProps) {
+  const { overview, lastUpload } = loaderData;
+  const series = monthlySeries(
+    overview.latestPayrollMonth,
+    overview.payrollMonths
+  );
+  const missingMonths = series.filter((month) => month.missing);
+  const dropMonths = series.filter((month) => month.drop);
+  const latestMonth = series[series.length - 1];
+
+  const interestLag =
+    overview.latestInterestMonth !== null &&
+    overview.latestPayrollMonth !== null
+      ? monthsBetween(overview.latestInterestMonth, overview.latestPayrollMonth)
+      : null;
+  const interestTone: BadgeTone =
+    interestLag === null
+      ? "danger"
+      : interestLag <= INTEREST_LAG_OK
+      ? "success"
+      : interestLag <= INTEREST_LAG_WARNING
+      ? "warning"
+      : "danger";
+
+  const signInShare =
+    overview.pensioners > 0
+      ? Math.round((overview.pensionersWithEmail / overview.pensioners) * 100)
+      : 0;
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-semibold">Overview</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          The pension database at a glance: how much is recorded, whether every
+          payroll month has been loaded, and how far interest has been computed.
         </p>
       </div>
+
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+        <StatTile
+          icon={Users}
+          label="Pensioners"
+          value={overview.pensioners.toLocaleString()}
+          detail={`${overview.admins} admin${overview.admins === 1 ? "" : "s"}`}
+        />
+        <StatTile
+          icon={KeyRound}
+          label="Can sign in"
+          value={overview.pensionersWithEmail.toLocaleString()}
+          detail={`${signInShare}% have an email`}
+        />
+        <StatTile
+          icon={Wallet}
+          label="Contributions"
+          value={compactAmount.format(overview.contributionTotal)}
+          detail={`${overview.contributionRows.toLocaleString()} entries`}
+        />
+        <StatTile
+          icon={Percent}
+          label="Interest computed"
+          value={compactAmount.format(overview.interestTotal)}
+          detail={
+            overview.latestInterestMonth !== null
+              ? `to ${formatPeriod(overview.latestInterestMonth)}`
+              : "none yet"
+          }
+        />
+      </div>
+
+      <Card className="gap-0 overflow-hidden py-0">
+        <CardHeader className="border-b py-4 [.border-b]:pb-4">
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <ShieldCheck className="size-4 text-muted-foreground" />
+            Is the data up to date?
+          </CardTitle>
+        </CardHeader>
+        <ul className="divide-y">
+          <StatusRow
+            icon={BarChart3}
+            title="Latest payroll loaded"
+            value={
+              overview.latestPayrollMonth !== null
+                ? formatPeriod(overview.latestPayrollMonth)
+                : "None"
+            }
+            tone={missingMonths.length > 0 ? "warning" : "success"}
+            badge={
+              missingMonths.length > 0
+                ? `${missingMonths.length} month${missingMonths.length === 1 ? "" : "s"} missing`
+                : "No gaps"
+            }
+          >
+            {latestMonth && !latestMonth.missing
+              ? `${latestMonth.people.toLocaleString()} people paid. `
+              : ""}
+            {missingMonths.length > 0
+              ? `Nothing loaded for ${missingMonths
+                  .map((month) => formatPeriod(month.period))
+                  .join(", ")} in the last ${series.length} months.`
+              : `Every payroll month in the last ${series.length} months has contributions.`}
+          </StatusRow>
+
+          <StatusRow
+            icon={Percent}
+            title="Interest computed to"
+            value={
+              overview.latestInterestMonth !== null
+                ? formatPeriod(overview.latestInterestMonth)
+                : "Never"
+            }
+            tone={interestTone}
+            badge={
+              interestLag === null
+                ? "Not computed"
+                : interestLag <= 0
+                ? "Up to date"
+                : `${interestLag} month${interestLag === 1 ? "" : "s"} behind`
+            }
+          >
+            {interestLag === null
+              ? "No interest has been computed yet."
+              : interestLag <= INTEREST_LAG_OK
+              ? `Computed for ${overview.latestInterestPeople.toLocaleString()} people; in step with the payroll.`
+              : `Computed for ${overview.latestInterestPeople.toLocaleString()} people. Statements show no interest after ${formatPeriod(
+                  overview.latestInterestMonth!
+                )}, so balances are understated until the interest computation is run.`}
+          </StatusRow>
+
+          <StatusRow
+            icon={Upload}
+            title="Last upload in the app"
+            value={lastUpload ? formatUploadTime(lastUpload.StartedAt) : "None"}
+            tone={lastUpload ? STATUS[lastUpload.status].tone : "neutral"}
+            badge={lastUpload ? STATUS[lastUpload.status].label : "None yet"}
+          >
+            {lastUpload ? (
+              <>
+                {lastUpload.FileName}
+                {lastUpload.InPeriods.length > 0 &&
+                  ` (${lastUpload.InPeriods.map(formatPeriod).join(", ")})`}{" "}
+                by {lastUpload.UploadedBy}.{" "}
+              </>
+            ) : (
+              "Payroll may have been loaded directly into the database. "
+            )}
+            <Link
+              to="/contributions-upload"
+              className="font-medium text-primary hover:underline"
+            >
+              Upload history
+            </Link>
+          </StatusRow>
+        </ul>
+      </Card>
+
+      {series.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <BarChart3 className="size-4 text-muted-foreground" />
+              Contributions per payroll month
+            </CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Total loaded for each payroll month (including arrears for
+              earlier months), last {series.length} months. Select a month for
+              details.
+              {dropMonths.length > 0 &&
+                ` Amber months paid noticeably fewer people than the month before: check the upload was complete.`}
+            </p>
+          </CardHeader>
+          <CardContent>
+            <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
+              <span>{compactAmount.format(Math.max(...series.map((m) => m.total)))}</span>
+              <span className="flex items-center gap-3">
+                <span className="flex items-center gap-1.5">
+                  <span className="size-2.5 rounded-sm bg-primary/40" />
+                  Loaded
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="size-2.5 rounded-sm bg-amber-400" />
+                  Drop
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="size-2.5 rounded-sm border border-dashed border-destructive/60" />
+                  Missing
+                </span>
+              </span>
+            </div>
+            <PayrollChart series={series} />
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

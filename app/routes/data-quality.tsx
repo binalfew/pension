@@ -46,7 +46,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 
   // Only admins (the pension office) can see this report
   if (resolvedUser?.role !== "Admin") {
-    throw redirect("/");
+    throw redirect("/statement");
   }
 
   return getDataQualityReport();
@@ -58,7 +58,7 @@ function SapIdLink({ sapId }: { sapId: number | null }) {
   }
   return (
     <Link
-      to={`/?sapId=${sapId}`}
+      to={`/statement?sapId=${sapId}`}
       className="font-medium text-primary hover:underline"
     >
       {sapId}
@@ -74,7 +74,7 @@ function EmailCheckLink({ email }: { email: string | null }) {
   }
   return (
     <Link
-      to={`/sign-in-check?email=${encodeURIComponent(trimmed)}`}
+      to={`/diagnosis?email=${encodeURIComponent(trimmed)}`}
       className="break-all text-primary hover:underline"
     >
       {trimmed}

@@ -5,6 +5,7 @@ import {
   userNameKey,
   type ProviderUser,
 } from "~/lib/auth.server";
+import { resolveUserByEmail } from "~/lib/db.server";
 import { authSessionStorage } from "~/lib/session.server";
 import type { Route } from "./+types/auth.$provider.callback";
 
@@ -37,7 +38,11 @@ export async function loader({ request, params }: Route.LoaderArgs) {
     session.set(userNameKey, providerUser.username);
   }
 
-  return redirect("/", {
+  // Admins land on the system overview, pensioners on their statement
+  const resolvedUser = await resolveUserByEmail(providerUser.email);
+  const landing = resolvedUser?.role === "Admin" ? "/" : "/statement";
+
+  return redirect(landing, {
     headers: {
       "Set-Cookie": await authSessionStorage.commitSession(session),
     },

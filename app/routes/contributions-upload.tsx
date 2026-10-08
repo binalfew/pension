@@ -37,7 +37,7 @@ async function requireAdminEmail(request: Request) {
   const userEmail = await getUserEmail(request);
   const resolvedUser = userEmail ? await resolveUserByEmail(userEmail) : null;
   if (resolvedUser?.role !== "Admin") {
-    throw redirect("/");
+    throw redirect("/statement");
   }
   return userEmail as string;
 }

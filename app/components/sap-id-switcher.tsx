@@ -32,7 +32,7 @@ export function SapIdSwitcher({
   // loading
   const navigation = useNavigation();
   const pendingParams =
-    navigation.state === "loading" && navigation.location.pathname === "/"
+    navigation.state === "loading" && navigation.location.pathname === "/statement"
       ? new URLSearchParams(navigation.location.search)
       : null;
   const pendingCombined = pendingParams?.get("view") === "combined";

@@ -37,10 +37,10 @@ import {
   type SignInCheck,
 } from "~/lib/sign-in-check";
 import { cn, formatAmount, formatPeriod } from "~/lib/utils";
-import type { Route } from "./+types/sign-in-check";
+import type { Route } from "./+types/diagnosis";
 
 export function meta({}: Route.MetaArgs) {
-  return [{ title: "Sign-in Check | AU Pension" }];
+  return [{ title: "Diagnosis | AU Pension" }];
 }
 
 export async function loader({ request }: Route.LoaderArgs) {
@@ -49,7 +49,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 
   // Only admins (the pension office) can look up other people's records
   if (resolvedUser?.role !== "Admin") {
-    throw redirect("/");
+    throw redirect("/statement");
   }
 
   // Normalised the same way sign-in normalises the Microsoft email
@@ -103,7 +103,7 @@ function SapIdLink({ sapId }: { sapId: number | null }) {
   }
   return (
     <Link
-      to={`/?sapId=${sapId}`}
+      to={`/statement?sapId=${sapId}`}
       className="font-medium text-primary hover:underline"
     >
       {sapId}
@@ -243,7 +243,7 @@ function NearMatches({ check }: { check: SignInCheck }) {
       <Card>
         <CardContent className="text-sm text-muted-foreground">
           No similar records either. Find them by name or SAP ID with the{" "}
-          <Link to="/" className="font-medium text-primary hover:underline">
+          <Link to="/statement" className="font-medium text-primary hover:underline">
             statement search
           </Link>
           ; if they aren't there, they need adding to the users table.
@@ -313,12 +313,12 @@ export default function SignInCheckPage({ loaderData }: Route.ComponentProps) {
   const navigation = useNavigation();
   const isChecking =
     navigation.state === "loading" &&
-    navigation.location.pathname === "/sign-in-check";
+    navigation.location.pathname === "/diagnosis";
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">Sign-in check</h1>
+        <h1 className="text-2xl font-semibold">Diagnosis</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           See what someone gets when they sign in with an email: whether they
           are recognised, which statement opens, and where it goes wrong if
