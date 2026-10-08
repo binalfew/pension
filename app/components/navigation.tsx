@@ -10,6 +10,7 @@ const navItems = [
   { to: "/", label: "Statement" },
   { to: "/contributions-upload", label: "Upload" },
   { to: "/data-quality", label: "Quality" },
+  { to: "/sign-in-check", label: "Sign-in check" },
 ];
 
 const navLinkClass = ({ isActive }: { isActive: boolean }) =>
@@ -81,12 +82,12 @@ export default function Navigation({
                         />
                       </>
                     )}
-                    <div className="hidden max-w-64 truncate md:block">
+                    <div className="hidden max-w-64 truncate lg:block">
                       Welcome, {user.name}
                     </div>
                     <Separator
                       orientation="vertical"
-                      className="hidden bg-primary-foreground/30 md:block"
+                      className="hidden bg-primary-foreground/30 lg:block"
                     />
                     <Button
                       variant="link"

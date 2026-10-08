@@ -5,6 +5,7 @@ import type { ContributionView } from "~/types/contribution-view";
 import type { SapIdSummary } from "~/types/sap-id-summary";
 import type { Account, Statement } from "~/types/statement";
 import type { AdminUser, User } from "~/types/user";
+import type { NearMatch, SapIdCheck, SignInCheck } from "./sign-in-check";
 import { Prisma } from "@prisma/client";
 import prisma from "./prisma";
 import { MAX_PERIOD } from "./utils";
@@ -442,4 +443,141 @@ export async function getDataQualityReport(): Promise<{
   ]);
 
   return { missingEmail, duplicateSapIds };
+}
+
+// Escapes LIKE wildcards so a search for "first_last" matches the
+// underscore literally; use with ESCAPE '\'
+function escapeLike(text: string) {
+  return text.replace(/[\\%_[]/g, "\\$&");
+}
+
+// Everything sign-in looks at for one email, plus records that look like the
+// same person under a slightly different email. `email` must already be
+// trimmed and lowercased, as sign-in does.
+export async function getSignInCheck(email: string): Promise<SignInCheck> {
+  const [admin, accounts] = await Promise.all([
+    getAdminUserByEmail(email),
+    getUsersByEmail(email),
+  ]);
+  const sapIds = accounts
+    .map((account) => account.SAPID)
+    .filter((sapId): sapId is number => typeof sapId === "number");
+
+  const [sapIdRows, nearMatches] = await Promise.all([
+    sapIds.length === 0
+      ? Promise.resolve([] as SapIdCheck[])
+      : prisma.$queryRaw<SapIdCheck[]>`
+          SELECT
+            s.SAPID,
+            (SELECT TOP 1 LTRIM(RTRIM(u.FullName)) FROM users u
+              WHERE u.SAPID = s.SAPID AND LTRIM(RTRIM(u.FullName)) <> ''
+              ORDER BY CASE WHEN u.Email = ${email} THEN 0 ELSE 1 END) AS FullName,
+            (SELECT COUNT(*) FROM contributions c WHERE c.SAPID = s.SAPID) AS ContributionRows,
+            (SELECT COUNT(*) FROM ContributionView v WHERE v.SAPID = s.SAPID) AS ViewRows,
+            (SELECT MIN(c.ForPeriod) FROM contributions c WHERE c.SAPID = s.SAPID AND c.ForPeriod <= ${MAX_PERIOD}) AS FirstPeriod,
+            (SELECT MAX(c.ForPeriod) FROM contributions c WHERE c.SAPID = s.SAPID AND c.ForPeriod <= ${MAX_PERIOD}) AS LastPeriod,
+            (SELECT COUNT(*) FROM ComputedInterests i WHERE i.SAPID = s.SAPID) AS InterestRows,
+            (SELECT MAX(i.YearMonth) FROM ComputedInterests i WHERE i.SAPID = s.SAPID) AS LatestInterest,
+            COALESCE((
+              SELECT SUM(c.Amount) FROM contributions c
+              INNER JOIN contributionTypes t ON t.ID = c.ContributionTypeID
+              WHERE c.SAPID = s.SAPID
+            ), 0) + COALESCE((
+              SELECT SUM(i.Interest) FROM ComputedInterests i WHERE i.SAPID = s.SAPID
+            ), 0) AS Balance,
+            (SELECT COUNT(*) FROM users u WHERE u.SAPID = s.SAPID) AS UserRows,
+            (
+              SELECT STRING_AGG(x.Value, ' | ') FROM (
+                SELECT DISTINCT LOWER(LTRIM(RTRIM(u.Email))) AS Value FROM users u
+                WHERE u.SAPID = s.SAPID AND LTRIM(RTRIM(u.Email)) <> ''
+                  AND LOWER(LTRIM(RTRIM(u.Email))) <> ${email}
+              ) x
+            ) AS OtherEmails
+          FROM (SELECT DISTINCT SAPID FROM users WHERE SAPID IN (${Prisma.join(
+            sapIds
+          )})) s
+        `,
+    findNearMatches(email),
+  ]);
+
+  return {
+    email,
+    isAdmin: admin !== null,
+    accounts: accounts.map((account) => ({
+      SAPID: account.SAPID ?? null,
+      FullName: account.FullName?.trim() || null,
+    })),
+    // Same order as sign-in uses
+    sapIds: sapIds
+      .map((sapId) => sapIdRows.find((row) => row.SAPID === sapId))
+      .filter((row): row is SapIdCheck => row !== undefined)
+      .map((row) => ({
+        ...row,
+        ContributionRows: Number(row.ContributionRows),
+        ViewRows: Number(row.ViewRows),
+        InterestRows: Number(row.InterestRows),
+        UserRows: Number(row.UserRows),
+        Balance: Number(row.Balance),
+      })),
+    nearMatches,
+  };
+}
+
+// Records that are probably the same person: the same email with extra
+// spaces (which sign-in misses), an email with the same name part (e.g.
+// @au.int instead of @africanunion.org), or a full name containing every
+// part of the email's name (first.last → "Last, First")
+async function findNearMatches(email: string): Promise<NearMatch[]> {
+  const localPart = email.split("@")[0];
+  if (localPart.length < 3) {
+    return [];
+  }
+  const emailLike = `%${escapeLike(localPart)}%`;
+  const nameParts = localPart
+    .split(/[._\-+0-9]+/)
+    .filter((part) => part.length >= 2);
+  const nameMatch =
+    nameParts.length > 0
+      ? Prisma.join(
+          nameParts.map(
+            (part) =>
+              Prisma.sql`u.FullName LIKE ${`%${escapeLike(part)}%`} ESCAPE '\\'`
+          ),
+          " AND "
+        )
+      : Prisma.sql`1 = 0`;
+
+  return prisma.$queryRaw<NearMatch[]>`
+    SELECT TOP 25 Source, Email, SAPID, FullName, Reason
+    FROM (
+      SELECT 'Pensioner' AS Source, u.Email, u.SAPID, u.FullName,
+        CASE
+          WHEN LOWER(LTRIM(RTRIM(u.Email))) = ${email} THEN 'spaces'
+          WHEN u.Email LIKE ${emailLike} ESCAPE '\\' THEN 'email'
+          ELSE 'name'
+        END AS Reason
+      FROM users u
+      WHERE (u.Email IS NULL OR u.Email <> ${email})
+        AND (
+          LOWER(LTRIM(RTRIM(u.Email))) = ${email}
+          OR u.Email LIKE ${emailLike} ESCAPE '\\'
+          OR (${nameMatch})
+        )
+      UNION ALL
+      SELECT 'Admin', a.Email, NULL, NULL,
+        CASE
+          WHEN LOWER(LTRIM(RTRIM(a.Email))) = ${email} THEN 'spaces'
+          ELSE 'email'
+        END
+      FROM adminUsers a
+      WHERE a.Email <> ${email}
+        AND (
+          LOWER(LTRIM(RTRIM(a.Email))) = ${email}
+          OR a.Email LIKE ${emailLike} ESCAPE '\\'
+        )
+    ) m
+    ORDER BY
+      CASE Reason WHEN 'spaces' THEN 0 WHEN 'email' THEN 1 ELSE 2 END,
+      Email, SAPID
+  `;
 }
