@@ -79,7 +79,7 @@ function Section({
 }
 
 export default function DataQuality({ loaderData }: Route.ComponentProps) {
-  const { missingEmail, duplicateSapIds, unusualDomains } = loaderData;
+  const { missingEmail, duplicateSapIds } = loaderData;
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
@@ -129,9 +129,9 @@ export default function DataQuality({ loaderData }: Route.ComponentProps) {
           <TableHeader>
             <TableRow>
               <TableHead>SAP ID</TableHead>
-              <TableHead className="text-right">Rows</TableHead>
-              <TableHead>Names</TableHead>
-              <TableHead>Emails</TableHead>
+              <TableHead className="text-right">Count</TableHead>
+              <TableHead>Name</TableHead>
+              <TableHead>Email</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -142,38 +142,11 @@ export default function DataQuality({ loaderData }: Route.ComponentProps) {
                 </TableCell>
                 <TableCell className="text-right">{row.Rows}</TableCell>
                 <TableCell className="whitespace-normal">
-                  {row.FullNames}
+                  {row.FullNames ?? "—"}
                 </TableCell>
                 <TableCell className="whitespace-normal">
-                  {row.Emails}
+                  {row.Emails ?? "—"}
                 </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </Section>
-
-      <Section
-        title="Unusual email domains"
-        description="Emails on a domain used by fewer than 3 pensioners. Often a typo (for example africanuion.org), which stops the person from signing in. Some may be legitimate."
-        count={unusualDomains.length}
-      >
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>SAP ID</TableHead>
-              <TableHead>Name</TableHead>
-              <TableHead>Email</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {unusualDomains.map((row, index) => (
-              <TableRow key={`${row.SAPID}-${row.Email}-${index}`}>
-                <TableCell>
-                  <SapIdLink sapId={row.SAPID} />
-                </TableCell>
-                <TableCell>{row.FullName?.trim() || "—"}</TableCell>
-                <TableCell>{row.Email}</TableCell>
               </TableRow>
             ))}
           </TableBody>

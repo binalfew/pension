@@ -386,14 +386,8 @@ export async function getDataQualityReport(): Promise<{
     FullNames: string | null;
     Emails: string | null;
   }>;
-  // Emails on a domain used by fewer than 3 users, which usually means a typo
-  unusualDomains: Array<{
-    SAPID: number | null;
-    FullName: string | null;
-    Email: string;
-  }>;
 }> {
-  const [missingEmail, duplicateSapIds, unusualDomains] = await Promise.all([
+  const [missingEmail, duplicateSapIds] = await Promise.all([
     prisma.$queryRaw<
       Array<{
         SAPID: number;
@@ -420,34 +414,32 @@ export async function getDataQualityReport(): Promise<{
         Emails: string | null;
       }>
     >`
+      -- Each distinct name and email once; blanks are left out
       SELECT
-        SAPID,
-        COUNT(*) AS Rows,
-        STRING_AGG(COALESCE(FullName, '(no name)'), ' | ') AS FullNames,
-        STRING_AGG(COALESCE(Email, '(no email)'), ' | ') AS Emails
-      FROM users
-      WHERE SAPID IS NOT NULL
-      GROUP BY SAPID
-      HAVING COUNT(*) > 1
-      ORDER BY SAPID
-    `,
-    prisma.$queryRaw<
-      Array<{ SAPID: number | null; FullName: string | null; Email: string }>
-    >`
-      WITH emails AS (
-        SELECT SAPID, FullName, Email,
-          LOWER(LTRIM(RTRIM(SUBSTRING(Email, CHARINDEX('@', Email) + 1, 255)))) AS Domain
+        d.SAPID,
+        d.Rows,
+        (
+          SELECT STRING_AGG(x.Value, ' | ') FROM (
+            SELECT DISTINCT LTRIM(RTRIM(FullName)) AS Value FROM users u
+            WHERE u.SAPID = d.SAPID AND LTRIM(RTRIM(FullName)) <> ''
+          ) x
+        ) AS FullNames,
+        (
+          SELECT STRING_AGG(x.Value, ' | ') FROM (
+            SELECT DISTINCT LTRIM(RTRIM(Email)) AS Value FROM users u
+            WHERE u.SAPID = d.SAPID AND LTRIM(RTRIM(Email)) <> ''
+          ) x
+        ) AS Emails
+      FROM (
+        SELECT SAPID, COUNT(*) AS Rows
         FROM users
-        WHERE Email IS NOT NULL AND LTRIM(RTRIM(Email)) <> ''
-      )
-      SELECT SAPID, FullName, Email
-      FROM emails
-      WHERE Domain IN (
-        SELECT Domain FROM emails GROUP BY Domain HAVING COUNT(*) < 3
-      )
-      ORDER BY Domain, Email
+        WHERE SAPID IS NOT NULL
+        GROUP BY SAPID
+        HAVING COUNT(*) > 1
+      ) d
+      ORDER BY d.SAPID
     `,
   ]);
 
-  return { missingEmail, duplicateSapIds, unusualDomains };
+  return { missingEmail, duplicateSapIds };
 }
