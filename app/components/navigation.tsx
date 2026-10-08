@@ -39,6 +39,13 @@ export default function Navigation({
                   {user.Role === "Admin" && (
                     <>
                       <Link
+                        to="/contributions-upload"
+                        className="text-muted-foreground hover:text-foreground"
+                      >
+                        Upload contributions
+                      </Link>
+                      <Separator orientation="vertical" />
+                      <Link
                         to="/data-quality"
                         className="text-muted-foreground hover:text-foreground"
                       >
