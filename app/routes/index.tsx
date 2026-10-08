@@ -292,7 +292,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
         </div>
       );
     }
-    return <Welcome />;
+    return <Welcome supportEmail={supportEmail} />;
   }
 
   // For admin users - always show the admin interface with search
