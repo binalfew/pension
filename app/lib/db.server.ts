@@ -372,7 +372,8 @@ export async function searchUsers(query: string): Promise<
   `;
 }
 
-// Data-quality issues in the users table, for the pension office to clean up
+// Data-quality issues in the pension database, for the pension office to
+// clean up
 export async function getDataQualityReport(): Promise<{
   // Pensioners with contributions who cannot sign in because they have no email
   missingEmail: Array<{
@@ -387,8 +388,57 @@ export async function getDataQualityReport(): Promise<{
     FullNames: string | null;
     Emails: string | null;
   }>;
+  // Contributions for SAP IDs with no users row: on no one's statement
+  orphanContributions: Array<{
+    SAPID: number;
+    Office: string | null;
+    Contributions: number;
+    Total: number;
+    FirstPeriod: number | null;
+    LastPeriod: number | null;
+  }>;
+  // Interest computed for SAP IDs with no users row
+  orphanInterest: Array<{
+    SAPID: number;
+    Months: number;
+    Total: number;
+  }>;
+  // Contributions whose type isn't in contributionTypes: left out of balances
+  unknownTypes: Array<{
+    ContributionTypeID: number | null;
+    Contributions: number;
+    SapIds: number;
+    Total: number;
+  }>;
+  // Emails in both adminUsers and users: they sign in as admin
+  adminPensioners: Array<{
+    Email: string;
+    FullName: string | null;
+    SapIds: string | null;
+  }>;
+  // users rows without a SAP ID: no statement to show
+  missingSapId: Array<{
+    PensionID: number | null;
+    FullName: string | null;
+    Email: string | null;
+  }>;
+  // Pensioners whose SAP ID has no contributions: an empty statement
+  noContributions: Array<{
+    SAPID: number;
+    FullName: string | null;
+    Email: string | null;
+  }>;
 }> {
-  const [missingEmail, duplicateSapIds] = await Promise.all([
+  const [
+    missingEmail,
+    duplicateSapIds,
+    orphanContributions,
+    orphanInterest,
+    unknownTypes,
+    adminPensioners,
+    missingSapId,
+    noContributions,
+  ] = await Promise.all([
     prisma.$queryRaw<
       Array<{
         SAPID: number;
@@ -440,9 +490,133 @@ export async function getDataQualityReport(): Promise<{
       ) d
       ORDER BY d.SAPID
     `,
+    prisma.$queryRaw<
+      Array<{
+        SAPID: number;
+        Office: string | null;
+        Contributions: number;
+        Total: number;
+        FirstPeriod: number | null;
+        LastPeriod: number | null;
+      }>
+    >`
+      SELECT
+        c.SAPID,
+        -- Office of the latest contribution
+        (SELECT TOP 1 LTRIM(RTRIM(o.OfficeName)) FROM contributions l
+          LEFT JOIN offices o ON o.ID = l.OfficeID
+          WHERE l.SAPID = c.SAPID
+          ORDER BY l.ForPeriod DESC) AS Office,
+        COUNT(*) AS Contributions,
+        SUM(c.Amount) AS Total,
+        MIN(CASE WHEN c.ForPeriod <= ${MAX_PERIOD} THEN c.ForPeriod END) AS FirstPeriod,
+        MAX(CASE WHEN c.ForPeriod <= ${MAX_PERIOD} THEN c.ForPeriod END) AS LastPeriod
+      FROM contributions c
+      WHERE NOT EXISTS (SELECT 1 FROM users u WHERE u.SAPID = c.SAPID)
+      GROUP BY c.SAPID
+      ORDER BY LastPeriod DESC, c.SAPID
+    `,
+    prisma.$queryRaw<Array<{ SAPID: number; Months: number; Total: number }>>`
+      SELECT i.SAPID, COUNT(*) AS Months, SUM(i.Interest) AS Total
+      FROM ComputedInterests i
+      WHERE NOT EXISTS (SELECT 1 FROM users u WHERE u.SAPID = i.SAPID)
+      GROUP BY i.SAPID
+      ORDER BY i.SAPID
+    `,
+    prisma.$queryRaw<
+      Array<{
+        ContributionTypeID: number | null;
+        Contributions: number;
+        SapIds: number;
+        Total: number;
+      }>
+    >`
+      SELECT c.ContributionTypeID, COUNT(*) AS Contributions,
+        COUNT(DISTINCT c.SAPID) AS SapIds, SUM(c.Amount) AS Total
+      FROM contributions c
+      WHERE NOT EXISTS (
+        SELECT 1 FROM contributionTypes t WHERE t.ID = c.ContributionTypeID
+      )
+      GROUP BY c.ContributionTypeID
+      ORDER BY c.ContributionTypeID
+    `,
+    prisma.$queryRaw<
+      Array<{ Email: string; FullName: string | null; SapIds: string | null }>
+    >`
+      SELECT
+        LOWER(LTRIM(RTRIM(a.Email))) AS Email,
+        (SELECT TOP 1 LTRIM(RTRIM(u.FullName)) FROM users u
+          WHERE LOWER(LTRIM(RTRIM(u.Email))) = LOWER(LTRIM(RTRIM(a.Email)))
+            AND LTRIM(RTRIM(u.FullName)) <> '') AS FullName,
+        (SELECT STRING_AGG(CAST(x.SAPID AS VARCHAR(20)), ' | ') FROM (
+          SELECT DISTINCT u.SAPID FROM users u
+          WHERE LOWER(LTRIM(RTRIM(u.Email))) = LOWER(LTRIM(RTRIM(a.Email)))
+            AND u.SAPID IS NOT NULL
+        ) x) AS SapIds
+      FROM adminUsers a
+      WHERE EXISTS (
+        SELECT 1 FROM users u
+        WHERE LOWER(LTRIM(RTRIM(u.Email))) = LOWER(LTRIM(RTRIM(a.Email)))
+      )
+      ORDER BY Email
+    `,
+    prisma.$queryRaw<
+      Array<{
+        PensionID: number | null;
+        FullName: string | null;
+        Email: string | null;
+      }>
+    >`
+      SELECT PensionID, FullName, Email
+      FROM users
+      WHERE SAPID IS NULL
+      ORDER BY FullName
+    `,
+    prisma.$queryRaw<
+      Array<{ SAPID: number; FullName: string | null; Email: string | null }>
+    >`
+      -- One row per SAP ID, preferring a row with an email
+      SELECT SAPID, FullName, Email FROM (
+        SELECT u.SAPID, u.FullName, u.Email,
+          ROW_NUMBER() OVER (
+            PARTITION BY u.SAPID
+            ORDER BY CASE WHEN u.Email IS NULL THEN 1 ELSE 0 END
+          ) AS RowNumber
+        FROM users u
+        WHERE u.SAPID IS NOT NULL
+          AND NOT EXISTS (SELECT 1 FROM contributions c WHERE c.SAPID = u.SAPID)
+      ) x
+      WHERE RowNumber = 1
+      ORDER BY FullName
+    `,
   ]);
 
-  return { missingEmail, duplicateSapIds };
+  // SQL Server money and bigint columns can arrive as non-numbers
+  const toNumber = (value: unknown) => Number(value ?? 0);
+
+  return {
+    missingEmail,
+    duplicateSapIds,
+    orphanContributions: orphanContributions.map((row) => ({
+      ...row,
+      Contributions: toNumber(row.Contributions),
+      Total: toNumber(row.Total),
+    })),
+    orphanInterest: orphanInterest.map((row) => ({
+      ...row,
+      Months: toNumber(row.Months),
+      Total: toNumber(row.Total),
+    })),
+    unknownTypes: unknownTypes.map((row) => ({
+      ...row,
+      Contributions: toNumber(row.Contributions),
+      SapIds: toNumber(row.SapIds),
+      Total: toNumber(row.Total),
+    })),
+    adminPensioners,
+    missingSapId,
+    noContributions,
+  };
 }
 
 // Escapes LIKE wildcards so a search for "first_last" matches the
