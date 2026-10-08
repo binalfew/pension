@@ -10,6 +10,8 @@ export const getSessionExpirationDate = () =>
   new Date(Date.now() + SESSION_EXPIRATION_TIME);
 
 export const userIdKey = "userId";
+// Microsoft display name, for people whose database record has no name
+export const userNameKey = "userName";
 
 export type ProviderUser = {
   id: string;
@@ -34,18 +36,23 @@ let microsoftStrategy = new MicrosoftStrategy(
     let accessToken = tokens.accessToken();
     let profile = await MicrosoftStrategy.userProfile(accessToken);
 
-    let rawEmail = profile.emails?.[0]?.value;
+    let rawEmail: string | undefined = profile.emails?.[0]?.value;
+    let displayName: string | undefined = profile.displayName?.trim();
 
-    if (!rawEmail) {
+    // The OpenID profile can leave out the email or name, so fall back to
+    // Microsoft Graph for either
+    if (!rawEmail || !displayName) {
       const graphRes = await fetch("https://graph.microsoft.com/v1.0/me", {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
       if (graphRes.ok) {
         const me = (await graphRes.json()) as {
+          displayName?: string;
           mail?: string;
           userPrincipalName?: string;
         };
-        rawEmail = me.mail ?? me.userPrincipalName;
+        rawEmail ||= me.mail ?? me.userPrincipalName;
+        displayName ||= me.displayName?.trim();
       } else {
         console.error(
           "[microsoft] graph /me failed",
@@ -63,8 +70,8 @@ let microsoftStrategy = new MicrosoftStrategy(
     return {
       id: profile.id,
       email,
-      username: profile.displayName,
-      name: profile.name?.givenName ?? profile.displayName ?? email,
+      username: displayName || email,
+      name: profile.name?.givenName ?? displayName ?? email,
     };
   }
 );
@@ -78,6 +85,13 @@ export async function getUserEmail(request: Request) {
   const userId = cookieSession.get(userIdKey);
 
   return userId ?? null;
+}
+
+export async function getUserName(request: Request): Promise<string | null> {
+  const cookieSession = await authSessionStorage.getSession(
+    request.headers.get("cookie")
+  );
+  return cookieSession.get(userNameKey) ?? null;
 }
 
 export async function requireUser(request: Request) {

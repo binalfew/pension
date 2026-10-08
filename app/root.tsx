@@ -11,7 +11,7 @@ import {
 import type { Route } from "./+types/root";
 import "./app.css";
 import Navigation from "./components/navigation";
-import { getUserEmail } from "./lib/auth.server";
+import { getUserEmail, getUserName } from "./lib/auth.server";
 import { resolveUserByEmail } from "./lib/db.server";
 
 export const links: Route.LinksFunction = () => [
@@ -37,6 +37,9 @@ export async function loader({ request }: Route.LoaderArgs) {
   }
 
   const resolvedUser = await resolveUserByEmail(userEmail);
+  // Admins have no name in the database, so fall back to the Microsoft
+  // display name saved at sign-in, then the email
+  const signInName = (await getUserName(request)) ?? userEmail;
 
   if (!resolvedUser) {
     return data({
@@ -44,7 +47,7 @@ export async function loader({ request }: Route.LoaderArgs) {
         id: userEmail,
         email: userEmail,
         username: userEmail,
-        name: userEmail,
+        name: signInName,
       },
     });
   }
@@ -55,8 +58,8 @@ export async function loader({ request }: Route.LoaderArgs) {
   const formattedUser = {
     id: user.Email,
     email: user.Email,
-    username: "FullName" in user ? user.FullName || user.Email : user.Email,
-    name: "FullName" in user ? user.FullName : user.Email,
+    username: ("FullName" in user && user.FullName?.trim()) || signInName,
+    name: ("FullName" in user && user.FullName?.trim()) || signInName,
     Role: role,
   };
 

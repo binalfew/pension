@@ -1,5 +1,10 @@
 import { data, redirect } from "react-router";
-import { authenticator, userIdKey, type ProviderUser } from "~/lib/auth.server";
+import {
+  authenticator,
+  userIdKey,
+  userNameKey,
+  type ProviderUser,
+} from "~/lib/auth.server";
 import { authSessionStorage } from "~/lib/session.server";
 import type { Route } from "./+types/auth.$provider.callback";
 
@@ -28,6 +33,9 @@ export async function loader({ request, params }: Route.LoaderArgs) {
   );
 
   session.set(userIdKey, providerUser.email);
+  if (providerUser.username) {
+    session.set(userNameKey, providerUser.username);
+  }
 
   return redirect("/", {
     headers: {
