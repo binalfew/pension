@@ -1,4 +1,4 @@
-import { Loader2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import {
   Form,
@@ -201,7 +201,7 @@ export default function ContributionsUpload({
         </Card>
 
         {runningUpload && submittingIntent !== "import" && (
-          <Card className="border-blue-500">
+          <Card className="border-blue-300 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/40">
             <CardContent className="flex items-start gap-3 text-sm">
               <Loader2 className="mt-0.5 size-4 shrink-0 animate-spin text-blue-600" />
               <p>
@@ -217,13 +217,19 @@ export default function ContributionsUpload({
         )}
 
         {actionData?.intent === "error" && (
-          <p className="text-sm text-destructive">{actionData.message}</p>
+          <div className="flex gap-3 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+            <p>{actionData.message}</p>
+          </div>
         )}
 
         {result && (
-          <Card className="border-green-600">
+          <Card className="border-primary/40 bg-primary/5">
             <CardHeader>
-              <CardTitle>Imported {result.fileName}</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                <CheckCircle2 className="size-5 text-primary" />
+                Imported {result.fileName}
+              </CardTitle>
               <p className="text-sm text-muted-foreground">
                 {result.rowCount.toLocaleString()} rows processed:{" "}
                 {result.inserted.toLocaleString()} added,{" "}

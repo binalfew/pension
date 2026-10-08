@@ -1,3 +1,10 @@
+import { History } from "lucide-react";
+import {
+  badgeTone,
+  tableBodyClass,
+  tableHeaderClass,
+  type BadgeTone,
+} from "~/components/table-styles";
 import { Badge } from "~/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
 import {
@@ -29,31 +36,14 @@ export function formatUploadTime(iso: string) {
   return dateTimeFormat.format(new Date(iso));
 }
 
-const STATUS: Record<
-  UploadHistoryStatus,
-  { label: string; className: string }
-> = {
-  running: {
-    label: "In progress",
-    className: "border-blue-500 text-blue-700 dark:text-blue-400",
-  },
-  succeeded: {
-    label: "Done",
-    className: "border-green-600 text-green-700 dark:text-green-400",
-  },
-  rejected: {
-    label: "Refused",
-    className: "border-amber-500 text-amber-700 dark:text-amber-400",
-  },
-  failed: {
-    label: "Failed",
-    className: "border-destructive text-destructive",
-  },
-  interrupted: {
-    label: "Interrupted",
-    className: "border-destructive text-destructive",
-  },
-};
+const STATUS: Record<UploadHistoryStatus, { label: string; tone: BadgeTone }> =
+  {
+    running: { label: "In progress", tone: "info" },
+    succeeded: { label: "Done", tone: "success" },
+    rejected: { label: "Refused", tone: "warning" },
+    failed: { label: "Failed", tone: "danger" },
+    interrupted: { label: "Interrupted", tone: "danger" },
+  };
 
 function Count({ value }: { value: number | null }) {
   return (
@@ -69,23 +59,26 @@ function Count({ value }: { value: number | null }) {
 
 export function UploadHistory({ history }: { history: UploadHistoryEntry[] }) {
   return (
-    <Card>
+    <Card className={cn(history.length > 0 && "overflow-hidden pb-0")}>
       <CardHeader>
-        <CardTitle className="text-lg">Upload history</CardTitle>
+        <CardTitle className="flex items-center gap-2 text-lg">
+          <History className="size-4 text-muted-foreground" />
+          Upload history
+        </CardTitle>
         <p className="text-sm text-muted-foreground">
           The latest {history.length > 0 ? history.length : ""} imports,
           newest first. Times are Addis Ababa time. Refused, failed and
           interrupted imports changed nothing.
         </p>
       </CardHeader>
-      <CardContent className="p-0">
+      <CardContent className="border-t p-0">
         {history.length === 0 ? (
-          <p className="px-6 pb-6 text-sm text-muted-foreground">
+          <p className="px-6 py-6 text-sm text-muted-foreground">
             No uploads yet.
           </p>
         ) : (
           <Table>
-            <TableHeader>
+            <TableHeader className={tableHeaderClass}>
               <TableRow>
                 <TableHead>Started</TableHead>
                 <TableHead>By</TableHead>
@@ -97,7 +90,7 @@ export function UploadHistory({ history }: { history: UploadHistoryEntry[] }) {
                 <TableHead>Status</TableHead>
               </TableRow>
             </TableHeader>
-            <TableBody>
+            <TableBody className={tableBodyClass}>
               {history.map((upload) => (
                 <TableRow key={upload.ID}>
                   <TableCell>{formatUploadTime(upload.StartedAt)}</TableCell>
@@ -112,10 +105,7 @@ export function UploadHistory({ history }: { history: UploadHistoryEntry[] }) {
                   <Count value={upload.Inserted} />
                   <Count value={upload.Updated} />
                   <TableCell className="whitespace-normal">
-                    <Badge
-                      variant="outline"
-                      className={cn(STATUS[upload.status].className)}
-                    >
+                    <Badge className={badgeTone[STATUS[upload.status].tone]}>
                       {STATUS[upload.status].label}
                     </Badge>
                     {upload.Message && (

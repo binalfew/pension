@@ -1,5 +1,27 @@
-import { ChevronLeft, ChevronRight, Download, Search } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCheck,
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  FileSpreadsheet,
+  PencilLine,
+  Plus,
+  Rows3,
+  Search,
+  UserX,
+  type LucideIcon,
+} from "lucide-react";
 import { useState } from "react";
+import {
+  badgeTone,
+  iconTone,
+  scrollingTableClass,
+  stickyTableHeaderClass,
+  tableBodyClass,
+  tableHeaderClass,
+  type BadgeTone,
+} from "~/components/table-styles";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
@@ -16,6 +38,7 @@ import type {
   PreviewRowStatus,
   UploadPreview,
 } from "~/lib/contribution-upload.server";
+import { downloadCsv } from "~/lib/csv";
 import { cn, formatAmount, formatPeriod } from "~/lib/utils";
 
 const PAGE_SIZE = 50;
@@ -38,32 +61,27 @@ type DisplayRow = {
   message: string | null;
 };
 
-const STATUS_LABELS: Record<PreviewRowStatus, string> = {
-  new: "New",
-  changed: "Changed",
-  unchanged: "Already loaded",
-  error: "Error",
+const STATUS: Record<PreviewRowStatus, { label: string; tone: BadgeTone }> = {
+  new: { label: "New", tone: "success" },
+  changed: { label: "Changed", tone: "warning" },
+  unchanged: { label: "Already loaded", tone: "neutral" },
+  error: { label: "Error", tone: "danger" },
 };
 
 function StatusBadge({ status }: { status: PreviewRowStatus }) {
   return (
-    <Badge
-      variant={
-        status === "error"
-          ? "destructive"
-          : status === "unchanged"
-            ? "secondary"
-            : "outline"
-      }
-      className={cn(
-        status === "new" &&
-          "border-green-600 text-green-700 dark:text-green-400",
-        status === "changed" &&
-          "border-amber-500 text-amber-700 dark:text-amber-400"
-      )}
-    >
-      {STATUS_LABELS[status]}
+    <Badge className={badgeTone[STATUS[status].tone]}>
+      {STATUS[status].label}
     </Badge>
+  );
+}
+
+function ErrorAlert({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex gap-3 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+      <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+      <div className="space-y-1">{children}</div>
+    </div>
   );
 }
 
@@ -205,9 +223,12 @@ function RowsTable({ preview }: { preview: UploadPreview }) {
   ];
 
   return (
-    <Card>
+    <Card className="overflow-hidden pb-0">
       <CardHeader className="gap-4">
-        <CardTitle className="text-lg">Rows in the file</CardTitle>
+        <CardTitle className="flex items-center gap-2 text-lg">
+          <Rows3 className="size-4 text-muted-foreground" />
+          Rows in the file
+        </CardTitle>
         <div className="flex flex-wrap items-center gap-2">
           {filters
             .filter((option) => option.value === "all" || option.count > 0)
@@ -240,9 +261,9 @@ function RowsTable({ preview }: { preview: UploadPreview }) {
           </div>
         </div>
       </CardHeader>
-      <CardContent className="p-0">
+      <CardContent className="border-t p-0">
         <Table>
-          <TableHeader>
+          <TableHeader className={tableHeaderClass}>
             <TableRow>
               <TableHead className="w-16">Row</TableHead>
               <TableHead>SAP ID</TableHead>
@@ -254,7 +275,7 @@ function RowsTable({ preview }: { preview: UploadPreview }) {
               <TableHead>Status</TableHead>
             </TableRow>
           </TableHeader>
-          <TableBody>
+          <TableBody className={tableBodyClass}>
             {pageRows.length === 0 && (
               <TableRow>
                 <TableCell
@@ -346,48 +367,34 @@ function RowsTable({ preview }: { preview: UploadPreview }) {
   );
 }
 
-function csvField(value: string | number | null) {
-  const text = value === null ? "" : String(value);
-  return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
-}
-
 // Same columns as UsersStaging, ready for the pension office to fill in the
 // missing names and emails, plus the office to help find each person
 function downloadMissingUsers(preview: UploadPreview) {
-  const header = ["SAPID", "PensionID", "FullName", "Email", "Office"];
-  const lines = preview.missingUsers.map((user) =>
-    [
+  downloadCsv(
+    `missing-users-${preview.fileName.replace(/\.xlsx$/i, "")}.csv`,
+    ["SAPID", "PensionID", "FullName", "Email", "Office"],
+    preview.missingUsers.map((user) => [
       user.SAPID,
       "",
       "",
       "",
       preview.offices[user.OfficeID] ?? user.OfficeID,
-    ]
-      .map(csvField)
-      .join(",")
+    ])
   );
-  const blob = new Blob([[header.join(","), ...lines].join("\n")], {
-    type: "text/csv",
-  });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `missing-users-${preview.fileName.replace(/\.xlsx$/i, "")}.csv`;
-  link.click();
-  URL.revokeObjectURL(url);
 }
 
 function MissingUsers({ preview }: { preview: UploadPreview }) {
   const { missingUsers, offices } = preview;
 
   return (
-    <Card>
+    <Card className="overflow-hidden pb-0">
       <CardHeader>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="space-y-1.5">
             <CardTitle className="flex items-center gap-2 text-lg">
+              <UserX className="size-4 text-muted-foreground" />
               Employees missing from the users table
-              <Badge variant="secondary">
+              <Badge className={badgeTone.warning}>
                 {missingUsers.length.toLocaleString()}{" "}
                 {missingUsers.length === 1 ? "employee" : "employees"}
               </Badge>
@@ -411,15 +418,15 @@ function MissingUsers({ preview }: { preview: UploadPreview }) {
         </div>
       </CardHeader>
       <CardContent className="p-0">
-        <div className="max-h-[480px] overflow-y-auto">
+        <div className={scrollingTableClass}>
           <Table>
-            <TableHeader className="sticky top-0 bg-card">
+            <TableHeader className={stickyTableHeaderClass}>
               <TableRow>
-                <TableHead>SAP ID</TableHead>
+                <TableHead className="w-32">SAP ID</TableHead>
                 <TableHead>Office</TableHead>
               </TableRow>
             </TableHeader>
-            <TableBody>
+            <TableBody className={tableBodyClass}>
               {missingUsers.map((user) => (
                 <TableRow key={user.SAPID}>
                   <TableCell className="tabular-nums">{user.SAPID}</TableCell>
@@ -447,34 +454,68 @@ export function UploadPreviewDetails({
   const fileErrors = preview.errors.filter((error) => !error.raw);
   const total =
     counts.new + counts.changed + counts.unchanged + counts.error;
+  const stats: Array<{
+    label: string;
+    value: number;
+    icon: LucideIcon;
+    // Colour when the count isn't zero
+    tone: BadgeTone;
+  }> = [
+    { label: "Rows", value: total, icon: Rows3, tone: "neutral" },
+    { label: "New", value: counts.new, icon: Plus, tone: "success" },
+    { label: "Changed", value: counts.changed, icon: PencilLine, tone: "warning" },
+    {
+      label: "Already loaded",
+      value: counts.unchanged,
+      icon: CheckCheck,
+      tone: "neutral",
+    },
+    {
+      label: "Errors",
+      value: counts.error + fileErrors.length,
+      icon: AlertTriangle,
+      tone: "danger",
+    },
+  ];
 
   return (
     <>
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">{preview.fileName}</CardTitle>
-          <p className="text-sm text-muted-foreground">
-            IN period:{" "}
-            {preview.inPeriods
-              .map(
-                ({ period, rows }) =>
-                  `${formatPeriod(period)} (${rows.toLocaleString()} rows)`
-              )
-              .join(", ") || "—"}
-          </p>
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <FileSpreadsheet className="size-4 text-muted-foreground" />
+            {preview.fileName}
+          </CardTitle>
+          <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+            IN period:
+            {preview.inPeriods.length === 0
+              ? " —"
+              : preview.inPeriods.map(({ period, rows }) => (
+                  <Badge key={period} className={badgeTone.neutral}>
+                    {formatPeriod(period)} · {rows.toLocaleString()} rows
+                  </Badge>
+                ))}
+          </div>
         </CardHeader>
-        <CardContent className="grid grid-cols-2 gap-4 sm:grid-cols-5">
-          {[
-            { label: "Rows", value: total },
-            { label: "New", value: counts.new },
-            { label: "Changed", value: counts.changed },
-            { label: "Already loaded", value: counts.unchanged },
-            { label: "Errors", value: counts.error + fileErrors.length },
-          ].map(({ label, value }) => (
-            <div key={label}>
-              <div className="text-sm text-muted-foreground">{label}</div>
-              <div className="text-2xl font-semibold tabular-nums">
-                {value.toLocaleString()}
+        <CardContent className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          {stats.map(({ label, value, icon: Icon, tone }) => (
+            <div
+              key={label}
+              className="flex items-center gap-3 rounded-lg border p-3"
+            >
+              <div
+                className={cn(
+                  "flex size-9 shrink-0 items-center justify-center rounded-lg",
+                  iconTone[value > 0 ? tone : "neutral"]
+                )}
+              >
+                <Icon className="size-4" />
+              </div>
+              <div>
+                <div className="text-sm text-muted-foreground">{label}</div>
+                <div className="text-xl font-semibold tabular-nums">
+                  {value.toLocaleString()}
+                </div>
               </div>
             </div>
           ))}
@@ -482,20 +523,18 @@ export function UploadPreviewDetails({
       </Card>
 
       {fileErrors.length > 0 && (
-        <Card className="border-destructive">
-          <CardContent className="space-y-1 text-sm text-destructive">
-            {fileErrors.map((error, index) => (
-              <p key={index}>{error.message}</p>
-            ))}
-          </CardContent>
-        </Card>
+        <ErrorAlert>
+          {fileErrors.map((error, index) => (
+            <p key={index}>{error.message}</p>
+          ))}
+        </ErrorAlert>
       )}
       {counts.error > 0 && (
-        <p className="text-sm text-destructive">
+        <ErrorAlert>
           {counts.error.toLocaleString()}{" "}
           {counts.error === 1 ? "row has" : "rows have"} errors. Nothing can be
           imported until they are fixed in the Excel file.
-        </p>
+        </ErrorAlert>
       )}
 
       {actions}
