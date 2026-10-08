@@ -1,4 +1,7 @@
 import { Calendar, Download, Hash, User } from "lucide-react";
+import { BalanceHistory } from "~/components/balance-history";
+import { ContributionGaps } from "~/components/contribution-gaps";
+import { TransactionsTable } from "~/components/transactions-table";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
 import {
   Table,
@@ -8,32 +11,34 @@ import {
   TableHeader,
   TableRow,
 } from "~/components/ui/table";
-import { formatPeriod } from "~/lib/utils";
+import { findContributionGaps, getAnnualSummary } from "~/lib/statement-analysis";
+import { formatAmount, formatPeriod } from "~/lib/utils";
 import type { ComputedInterest } from "~/types/computed-interest";
 import type { ContributionView } from "~/types/contribution-view";
 import type { Account, Statement } from "~/types/statement";
-
-export function formatAmount(amount: number) {
-  return amount.toLocaleString(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-}
 
 export function PensionStatement({
   statement,
   total,
   contributions,
   computedInterests,
+  supportEmail,
 }: {
   statement: Statement;
   total: Account;
   contributions: ContributionView[];
   computedInterests: ComputedInterest[];
+  supportEmail: string | null;
 }) {
+  const isCombined = statement.SapIds.length > 1;
+  // Query string for downloading this same statement
+  const downloadQuery = `sapId=${statement.SapIds[0]}${isCombined ? "&view=combined" : ""}`;
+  const annualSummary = getAnnualSummary(contributions, computedInterests);
+  const gaps = findContributionGaps(contributions);
+
   return (
     <>
-      <div className="flex items-center justify-between gap-4 p-4 bg-muted/30 rounded-lg border border-border shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-4 p-4 bg-muted/30 rounded-lg border border-border shadow-sm">
         <div className="flex items-center gap-4">
           <div className="flex-shrink-0">
             <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center">
@@ -46,25 +51,28 @@ export function PensionStatement({
             </h1>
             <div className="flex items-center gap-1 mt-1 text-sm text-muted-foreground">
               <Hash className="w-3 h-3" />
-              <span>SAP ID: {statement.EmployeeID}</span>
+              <span>
+                {isCombined
+                  ? `SAP IDs: ${statement.SapIds.join(", ")}`
+                  : `SAP ID: ${statement.SapIds[0]}`}
+              </span>
+            </div>
+            <div className="flex items-center gap-1 mt-0.5 text-sm text-muted-foreground">
+              <Calendar className="w-3 h-3" />
+              <span>
+                {statement.ContributionsThrough !== null
+                  ? `Contributions as of ${formatPeriod(statement.ContributionsThrough)}`
+                  : "No dated contributions"}
+                {statement.InterestThrough !== null &&
+                  ` · Interest as of ${formatPeriod(statement.InterestThrough)}`}
+              </span>
             </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-4 flex-shrink-0">
-          <div className="flex items-center gap-1 text-sm text-muted-foreground">
-            <Calendar className="w-3 h-3" />
-            <span>
-              As of{" "}
-              {new Date().toLocaleDateString("en-US", {
-                year: "numeric",
-                month: "long",
-                day: "numeric",
-              })}
-            </span>
-          </div>
+        <div className="flex flex-wrap items-center gap-2 flex-shrink-0">
           <a
-            href={`/api/pdf?sapId=${statement.EmployeeID}`}
+            href={`/api/pdf?${downloadQuery}`}
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-2 px-3 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors text-sm font-medium"
@@ -75,11 +83,20 @@ export function PensionStatement({
         </div>
       </div>
 
+      <ContributionGaps
+        gaps={gaps}
+        fullName={statement.EmployeeFullName}
+        showSapId={isCombined}
+        supportEmail={supportEmail}
+      />
+
       {/* Pension Statement Card */}
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="flex items-center justify-between text-base">
-            <span>Pension Statement</span>
+            <span>
+              {isCombined ? "Combined Pension Statement" : "Pension Statement"}
+            </span>
             <div className="flex items-center gap-2">
               <span className="text-lg font-bold text-primary">
                 ${formatAmount(total.Balance)}
@@ -118,55 +135,12 @@ export function PensionStatement({
         </CardContent>
       </Card>
 
-      {/* Monthly Transactions Table */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-lg">Monthly Transactions</CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-[15%]">For Period</TableHead>
-                <TableHead className="w-[15%]">In Period</TableHead>
-                <TableHead className="text-right w-[20%]">
-                  Contribution (USD)
-                </TableHead>
-                <TableHead className="w-[15%]">Office</TableHead>
-                <TableHead className="w-[35%]">Contribution Type</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {contributions.map((contribution, index) => (
-                <TableRow
-                  key={`${contribution.ForPeriod}-${contribution.ContributionTypeName}-${index}`}
-                  className={
-                    contribution.ContributionTypeName === "EMPLOYER ACCOUNT"
-                      ? "bg-blue-50/50 dark:bg-blue-950/20"
-                      : ""
-                  }
-                >
-                  <TableCell className="font-medium w-[15%]">
-                    {formatPeriod(contribution.ForPeriod)}
-                  </TableCell>
-                  <TableCell className="w-[15%]">
-                    {formatPeriod(contribution.InPeriod)}
-                  </TableCell>
-                  <TableCell className="text-right font-bold w-[20%]">
-                    ${formatAmount(contribution.Amount)}
-                  </TableCell>
-                  <TableCell className="w-[15%]">
-                    {contribution.OfficeName}
-                  </TableCell>
-                  <TableCell className="font-medium w-[35%]">
-                    {contribution.ContributionTypeName}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+      <BalanceHistory rows={annualSummary} />
+
+      <TransactionsTable
+        contributions={contributions}
+        showSapId={isCombined}
+      />
 
       <Card>
         <CardHeader>
@@ -176,6 +150,7 @@ export function PensionStatement({
           <Table>
             <TableHeader>
               <TableRow>
+                {isCombined && <TableHead>SAP ID</TableHead>}
                 <TableHead>Year Month</TableHead>
                 <TableHead>Interest</TableHead>
               </TableRow>
@@ -183,6 +158,7 @@ export function PensionStatement({
             <TableBody>
               {computedInterests.map((interest) => (
                 <TableRow key={interest.ID}>
+                  {isCombined && <TableCell>{interest.SAPID}</TableCell>}
                   <TableCell>{formatPeriod(interest.YearMonth)}</TableCell>
                   <TableCell>${formatAmount(interest.Interest)}</TableCell>
                 </TableRow>

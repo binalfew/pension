@@ -15,13 +15,8 @@ import { Input } from "~/components/ui/input";
 import { Label } from "~/components/ui/label";
 import Welcome from "~/components/welcome";
 import { getUserEmail } from "~/lib/auth.server";
-import {
-  generatePensionStatement,
-  generatePensionStatementBySapId,
-  getRelatedSapIds,
-  getSapIdSummaries,
-  resolveUserByEmail,
-} from "~/lib/db.server";
+import { getSapIdSummaries, resolveUserByEmail } from "~/lib/db.server";
+import { selectStatement } from "~/lib/statement-access.server";
 import { useDebounce, useIsPending } from "~/lib/utils";
 import type { Route } from "./+types/index";
 
@@ -71,51 +66,16 @@ export async function loader({ request }: Route.LoaderArgs) {
     });
   }
 
-  const { user, role, accounts } = resolvedUser;
-  const url = new URL(request.url);
-  const selectedSapId = url.searchParams.get("sapId");
+  const { user, role } = resolvedUser;
+  const selection = await selectStatement(
+    resolvedUser,
+    new URL(request.url).searchParams,
+    // Only allow selecting one of the pensioner's own SAP IDs
+    { fallbackToOwn: true }
+  );
 
-  // For admin users
-  if (role === "Admin") {
-    // If admin is viewing a specific user's statement
-    if (selectedSapId) {
-      const sapId = parseInt(selectedSapId);
-      if (isNaN(sapId)) {
-        return data({
-          user: { ...user, Role: role },
-          statement: null,
-          total: null,
-          contributions: null,
-          computedInterests: null,
-          error: "Invalid SAP ID",
-        });
-      }
-
-      const [statementData, sapIdSummaries] = await Promise.all([
-        generatePensionStatementBySapId(sapId),
-        // Other SAP IDs belonging to the same person
-        getRelatedSapIds(sapId).then(getSapIdSummaries),
-      ]);
-      if (!statementData) {
-        return data({
-          user: { ...user, Role: role },
-          statement: null,
-          total: null,
-          contributions: null,
-          computedInterests: null,
-          error: `Pension statement not found for the selected sap id ${sapId}`,
-        });
-      }
-
-      return data({
-        user: { ...user, Role: role },
-        sapIdSummaries,
-        ...statementData,
-        error: null,
-      });
-    }
-
-    // Admin with no sapId param
+  // Admin with no sapId param
+  if (selection.status === "none") {
     return data({
       user: { ...user, Role: role },
       statement: null,
@@ -123,43 +83,29 @@ export async function loader({ request }: Route.LoaderArgs) {
       contributions: null,
       computedInterests: null,
       error: null,
+      supportEmail,
     });
   }
 
-  // For pensioner users - they can only view their own statement(s)
-  const ownAccounts = accounts.filter((account) => account.SAPID);
-  if (role === "Pensioner" && ownAccounts.length > 0) {
-    // Only allow selecting one of the pensioner's own SAP IDs
-    const selectedAccount =
-      ownAccounts.find((account) => String(account.SAPID) === selectedSapId) ??
-      ownAccounts[0];
-    const [
-      { statement, total, contributions, computedInterests },
-      sapIdSummaries,
-    ] = await Promise.all([
-      generatePensionStatement(selectedAccount),
-      getSapIdSummaries(ownAccounts.map((account) => account.SAPID as number)),
-    ]);
-
+  if (selection.status === "error") {
     return data({
-      user: { ...selectedAccount, Role: role },
-      sapIdSummaries,
-      statement,
-      total,
-      contributions,
-      computedInterests,
-      error: null,
+      user: { ...user, Role: role },
+      statement: null,
+      total: null,
+      contributions: null,
+      computedInterests: null,
+      error: selection.message,
+      supportEmail,
     });
   }
 
-  // Pensioner without SAP ID
   return data({
-    user: { ...user, Role: role },
-    statement: null,
-    total: null,
-    contributions: null,
-    computedInterests: null,
-    error: "No pension data available",
+    // Pensioners see the SAP ID record being viewed
+    user: { ...(selection.account ?? user), Role: role },
+    sapIdSummaries: await getSapIdSummaries(selection.personSapIds),
+    ...selection.statementData,
+    error: null,
+    supportEmail,
   });
 }
 
@@ -451,13 +397,17 @@ export default function Home({ loaderData }: Route.ComponentProps) {
         {statement && total && contributions && computedInterests && (
           <SapIdSwitcher
             summaries={sapIdSummaries}
-            currentSapId={statement.EmployeeID}
+            currentSapId={statement.SapIds[0]}
+            isCombined={statement.SapIds.length > 1}
           >
             <PensionStatement
+              // Start with fresh filters when switching statements
+              key={statement.SapIds.join("-")}
               statement={statement}
               total={total}
               contributions={contributions}
               computedInterests={computedInterests}
+              supportEmail={supportEmail}
             />
           </SapIdSwitcher>
         )}
@@ -485,13 +435,17 @@ export default function Home({ loaderData }: Route.ComponentProps) {
       <div className="max-w-4xl mx-auto space-y-6">
         <SapIdSwitcher
           summaries={sapIdSummaries}
-          currentSapId={statement.EmployeeID}
+          currentSapId={statement.SapIds[0]}
+          isCombined={statement.SapIds.length > 1}
         >
           <PensionStatement
+            // Start with fresh filters when switching statements
+            key={statement.SapIds.join("-")}
             statement={statement}
             total={total}
             contributions={contributions}
             computedInterests={computedInterests}
+            supportEmail={supportEmail}
           />
         </SapIdSwitcher>
       </div>

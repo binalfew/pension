@@ -1,14 +1,5 @@
 import PDFDocument from "pdfkit";
-import type { ComputedInterest } from "~/types/computed-interest";
-import type { ContributionView } from "~/types/contribution-view";
-import type { Account, Statement } from "~/types/statement";
-
-interface PensionStatementData {
-  statement: Statement;
-  total: Account;
-  contributions: ContributionView[];
-  computedInterests: ComputedInterest[];
-}
+import type { PensionStatementData } from "./db.server";
 
 export function generatePensionStatementPDF(
   data: PensionStatementData
@@ -54,7 +45,30 @@ export function generatePensionStatementPDF(
 
     // Employee details in a box
     const infoBoxY = 120;
-    const infoBoxHeight = 80;
+    const details: Array<[string, string]> = [
+      ["Employee Name:", data.statement.EmployeeFullName],
+      [
+        data.statement.SapIds.length > 1 ? "SAP IDs:" : "SAP ID:",
+        data.statement.SapIds.join(", "),
+      ],
+      [
+        "Contributions as of:",
+        formatOptionalPeriod(data.statement.ContributionsThrough),
+      ],
+      [
+        "Interest as of:",
+        formatOptionalPeriod(data.statement.InterestThrough),
+      ],
+      [
+        "Generated on:",
+        new Date().toLocaleDateString("en-US", {
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+        }),
+      ],
+    ];
+    const infoBoxHeight = details.length * 20 + 20;
 
     // Draw info box border
     doc
@@ -62,38 +76,19 @@ export function generatePensionStatementPDF(
       .rect(50, infoBoxY, doc.page.width - 100, infoBoxHeight)
       .stroke();
 
-    doc
-      .fillColor("black")
-      .fontSize(12)
-      .font("Helvetica-Bold")
-      .text("Employee Name:", 60, infoBoxY + 15);
-    doc
-      .fillColor("black")
-      .fontSize(12)
-      .font("Helvetica")
-      .text(data.statement.EmployeeFullName, 200, infoBoxY + 15);
-
-    doc
-      .fillColor("black")
-      .fontSize(12)
-      .font("Helvetica-Bold")
-      .text("SAP ID:", 60, infoBoxY + 35);
-    doc
-      .fillColor("black")
-      .fontSize(12)
-      .font("Helvetica")
-      .text(data.statement.EmployeeID.toString(), 200, infoBoxY + 35);
-
-    doc
-      .fillColor("black")
-      .fontSize(12)
-      .font("Helvetica-Bold")
-      .text("Statement Date:", 60, infoBoxY + 55);
-    doc
-      .fillColor("black")
-      .fontSize(12)
-      .font("Helvetica")
-      .text(data.statement.AsOfMonth.toLocaleDateString(), 200, infoBoxY + 55);
+    details.forEach(([label, value], index) => {
+      const y = infoBoxY + 15 + index * 20;
+      doc
+        .fillColor("black")
+        .fontSize(12)
+        .font("Helvetica-Bold")
+        .text(label, 60, y);
+      doc
+        .fillColor("black")
+        .fontSize(12)
+        .font("Helvetica")
+        .text(value, 210, y);
+    });
 
     // Account Details Table
     const tableY = infoBoxY + infoBoxHeight + 30;
@@ -214,6 +209,10 @@ export function generatePensionStatementPDF(
 
     doc.end();
   });
+}
+
+function formatOptionalPeriod(period: number | null): string {
+  return period === null ? "None recorded" : formatPeriod(period);
 }
 
 function formatPeriod(period: number): string {

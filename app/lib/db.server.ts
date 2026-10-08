@@ -7,10 +7,7 @@ import type { Account, Statement } from "~/types/statement";
 import type { AdminUser, User } from "~/types/user";
 import { Prisma } from "@prisma/client";
 import prisma from "./prisma";
-
-// Largest valid YYYYMM period. Legacy opening balances use the non-period
-// value 20152017 (2015-2017), which must not count as the latest activity.
-const MAX_PERIOD = 999912;
+import { MAX_PERIOD } from "./utils";
 
 // Unified user resolution - checks both tables and returns user with role
 export async function resolveUserByEmail(email: string): Promise<{
@@ -149,13 +146,19 @@ export async function getContributionsByType(
   `;
 }
 
+// Same columns as ContributionView, but keeps contributions that have no
+// office: the view's inner join drops them even though they count towards
+// the balance.
 export async function getContributionsBySapId(
   sapId: number
 ): Promise<ContributionView[]> {
   return prisma.$queryRaw<ContributionView[]>`
-    SELECT * FROM ContributionView 
-    WHERE SAPID = ${sapId} 
-    ORDER BY ForPeriod DESC
+    SELECT c.SAPID, c.Amount, c.ForPeriod, c.InPeriod, o.OfficeName, t.ContributionTypeName
+    FROM contributions c
+    INNER JOIN contributionTypes t ON t.ID = c.ContributionTypeID
+    LEFT JOIN offices o ON o.ID = c.OfficeID
+    WHERE c.SAPID = ${sapId}
+    ORDER BY c.ForPeriod DESC, t.ID
   `;
 }
 
@@ -169,29 +172,38 @@ export async function getComputedInterestsBySapId(
   `;
 }
 
-export async function generatePensionStatement(user: User): Promise<{
+export type PensionStatementData = {
   statement: Statement;
   total: Account;
   contributions: ContributionView[];
   computedInterests: ComputedInterest[];
-}> {
+};
+
+// Latest month (YYYYMM) in a list of periods, ignoring the legacy
+// 2015-2017 opening balance period
+function latestPeriod(periods: number[]): number | null {
+  const months = periods.filter((period) => period <= MAX_PERIOD);
+  return months.length > 0 ? Math.max(...months) : null;
+}
+
+export async function generatePensionStatement(
+  user: User
+): Promise<PensionStatementData> {
+  const sapId = user.SAPID ?? 0;
   const statement: Statement = {
     EmployeeFullName: user.FullName ?? "",
-    AsOfMonth: new Date(),
-    EmployeeID: user.SAPID ?? 0,
     PensionID: user.PensionID ?? 0,
+    SapIds: [sapId],
+    ContributionsThrough: null,
+    InterestThrough: null,
     Accounts: [],
   };
 
   const total: Account = {
     AccountName: "TOTAL",
     Balance: 0,
-    Interest: 0,
-    Withdrawals: 0,
-    ClosingBalance: 0,
   };
 
-  const sapId = user.SAPID ?? 0;
   const [contributionTypes, contributions, computedInterests] =
     await Promise.all([
       getAllContributionTypes(),
@@ -212,21 +224,19 @@ export async function generatePensionStatement(user: User): Promise<{
         (acc, contribution) => acc + (contribution.Amount ?? 0),
         0
       ),
-      Interest: 0,
-      Withdrawals: 0,
-      ClosingBalance: 0,
     };
-
-    account.ClosingBalance =
-      account.Balance + account.Interest + account.Withdrawals;
 
     statement.Accounts.push(account);
 
     total.Balance += account.Balance;
-    total.Interest += account.Interest;
-    total.Withdrawals += account.Withdrawals;
-    total.ClosingBalance += account.ClosingBalance;
   });
+
+  statement.ContributionsThrough = latestPeriod(
+    contributionsByType.flat().map((contribution) => contribution.ForPeriod ?? 0)
+  );
+  statement.InterestThrough = latestPeriod(
+    computedInterests.map((interest) => interest.YearMonth)
+  );
 
   // Add Calculated Interests to the statement
   const cumulatedInterests = {
@@ -235,14 +245,9 @@ export async function generatePensionStatement(user: User): Promise<{
       (acc, interest) => acc + interest.Interest,
       0
     ),
-    Interest: 0,
-    Withdrawals: 0,
-    ClosingBalance: 0,
   };
 
   total.Balance += cumulatedInterests.Balance;
-  total.Interest += cumulatedInterests.Balance;
-  total.ClosingBalance += cumulatedInterests.Balance;
 
   statement.Accounts.push(cumulatedInterests);
   statement.Accounts.push(total);
@@ -251,12 +256,9 @@ export async function generatePensionStatement(user: User): Promise<{
 }
 
 // Generate pension statement by SAP ID (for admin viewing others' statements)
-export async function generatePensionStatementBySapId(sapId: number): Promise<{
-  statement: Statement;
-  total: Account;
-  contributions: ContributionView[];
-  computedInterests: ComputedInterest[];
-} | null> {
+export async function generatePensionStatementBySapId(
+  sapId: number
+): Promise<PensionStatementData | null> {
   // First get the user by SAP ID
   const user = await getUserBySapId(sapId);
   if (!user) {
@@ -265,6 +267,60 @@ export async function generatePensionStatementBySapId(sapId: number): Promise<{
 
   // Then generate the statement using the existing function
   return generatePensionStatement(user);
+}
+
+// One statement covering all of a person's SAP IDs: account balances are
+// summed and transactions merged. Each transaction keeps its own SAPID.
+export function combinePensionStatements(
+  parts: PensionStatementData[]
+): PensionStatementData {
+  const accounts: Account[] = [];
+  for (const part of parts) {
+    for (const account of part.statement.Accounts) {
+      const existing = accounts.find(
+        (other) => other.AccountName === account.AccountName
+      );
+      if (existing) {
+        existing.Balance += account.Balance;
+      } else {
+        accounts.push({ ...account });
+      }
+    }
+  }
+
+  const maxOrNull = (values: Array<number | null>) => {
+    const present = values.filter((value): value is number => value !== null);
+    return present.length > 0 ? Math.max(...present) : null;
+  };
+
+  return {
+    statement: {
+      EmployeeFullName: parts[0]?.statement.EmployeeFullName ?? "",
+      PensionID: parts[0]?.statement.PensionID ?? 0,
+      SapIds: parts.flatMap((part) => part.statement.SapIds),
+      ContributionsThrough: maxOrNull(
+        parts.map((part) => part.statement.ContributionsThrough)
+      ),
+      InterestThrough: maxOrNull(
+        parts.map((part) => part.statement.InterestThrough)
+      ),
+      // TOTAL stays last, as in a single statement
+      Accounts: [
+        ...accounts.filter((account) => account.AccountName !== "TOTAL"),
+        ...accounts.filter((account) => account.AccountName === "TOTAL"),
+      ],
+    },
+    total: {
+      AccountName: "TOTAL",
+      Balance: parts.reduce((sum, part) => sum + part.total.Balance, 0),
+    },
+    contributions: parts
+      .flatMap((part) => part.contributions)
+      .sort((a, b) => b.ForPeriod - a.ForPeriod || a.SAPID - b.SAPID),
+    computedInterests: parts
+      .flatMap((part) => part.computedInterests)
+      .sort((a, b) => b.YearMonth - a.YearMonth || a.SAPID - b.SAPID),
+  };
 }
 
 // Search users for autocomplete suggestions

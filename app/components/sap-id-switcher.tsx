@@ -1,8 +1,7 @@
 import { Layers, Loader2 } from "lucide-react";
 import { Link, useNavigation } from "react-router";
 import { useSpinDelay } from "spin-delay";
-import { formatAmount } from "~/components/pension-statement";
-import { cn, formatPeriod } from "~/lib/utils";
+import { cn, formatAmount, formatPeriod } from "~/lib/utils";
 import type { SapIdSummary } from "~/types/sap-id-summary";
 
 function formatPeriodRange(summary: SapIdSummary) {
@@ -14,25 +13,34 @@ function formatPeriodRange(summary: SapIdSummary) {
   return first === last ? first : `${first} – ${last}`;
 }
 
-// Lets a person with multiple SAP IDs switch between their statements.
-// Renders only the children when there is a single SAP ID.
+// Lets a person with multiple SAP IDs switch between their statements, or
+// see all of them combined. Renders only the children when there is a single
+// SAP ID.
 export function SapIdSwitcher({
   summaries,
   currentSapId,
+  isCombined,
   children,
 }: {
   summaries: SapIdSummary[];
   currentSapId: number;
+  // Whether the combined statement for all SAP IDs is showing
+  isCombined: boolean;
   children: React.ReactNode;
 }) {
-  // SAP ID being switched to, while its statement is loading
+  // SAP ID (or combined view) being switched to, while its statement is
+  // loading
   const navigation = useNavigation();
-  const pendingSapId =
+  const pendingParams =
     navigation.state === "loading" && navigation.location.pathname === "/"
-      ? Number(new URLSearchParams(navigation.location.search).get("sapId")) ||
-        null
+      ? new URLSearchParams(navigation.location.search)
       : null;
-  const isSwitching = useSpinDelay(pendingSapId !== null, {
+  const pendingCombined = pendingParams?.get("view") === "combined";
+  const pendingSapId = pendingCombined
+    ? null
+    : Number(pendingParams?.get("sapId")) || null;
+  const isCombinedSelected = pendingParams ? pendingCombined : isCombined;
+  const isSwitching = useSpinDelay(pendingSapId !== null || pendingCombined, {
     delay: 150,
     minDuration: 300,
   });
@@ -58,17 +66,18 @@ export function SapIdSwitcher({
               </span>
             </div>
           </div>
-          <div className="grid gap-2 p-3 sm:grid-cols-2">
+          <div className="flex flex-wrap gap-2 p-3">
             {summaries.map((summary) => {
-              const isSelected =
-                summary.SAPID === (pendingSapId ?? currentSapId);
+              const isSelected = pendingParams
+                ? summary.SAPID === pendingSapId
+                : !isCombined && summary.SAPID === currentSapId;
               return (
                 <Link
                   key={summary.SAPID}
                   to={`?sapId=${summary.SAPID}`}
                   aria-current={isSelected ? "page" : undefined}
                   className={cn(
-                    "flex items-center justify-between gap-3 px-3 py-2 rounded-md border transition-colors",
+                    "flex flex-1 basis-48 items-center justify-between gap-3 px-3 py-2 rounded-md border transition-colors",
                     isSelected
                       ? "bg-primary text-primary-foreground border-primary"
                       : "bg-background border-border hover:bg-muted/50"
@@ -98,6 +107,40 @@ export function SapIdSwitcher({
                 </Link>
               );
             })}
+            <Link
+              to={`?sapId=${summaries[0].SAPID}&view=combined`}
+              aria-current={isCombinedSelected ? "page" : undefined}
+              className={cn(
+                "flex flex-1 basis-48 items-center justify-between gap-3 px-3 py-2 rounded-md border transition-colors",
+                isCombinedSelected
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "bg-background border-border hover:bg-muted/50"
+              )}
+            >
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5 text-sm font-semibold">
+                  {isSwitching && pendingCombined ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Layers className="w-3.5 h-3.5" />
+                  )}
+                  All combined
+                </div>
+                <div
+                  className={cn(
+                    "text-xs",
+                    isCombinedSelected
+                      ? "text-primary-foreground/80"
+                      : "text-muted-foreground"
+                  )}
+                >
+                  {summaries.length} SAP IDs
+                </div>
+              </div>
+              <div className="text-sm font-semibold flex-shrink-0">
+                ${formatAmount(combinedBalance)}
+              </div>
+            </Link>
           </div>
         </div>
       )}

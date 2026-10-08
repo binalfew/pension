@@ -4,19 +4,20 @@ import { z } from "zod";
 export const Account = z.object({
   AccountName: z.string(),
   Balance: z.number(),
-  Interest: z.number(),
-  Withdrawals: z.number(),
-  ClosingBalance: z.number(),
 });
 
 export type Account = z.infer<typeof Account>;
 
 // Statement type definition
 export const Statement = z.object({
-  AsOfMonth: z.date(),
   EmployeeFullName: z.string(),
   PensionID: z.number(),
-  EmployeeID: z.number(),
+  // One SAP ID, or several for a combined statement
+  SapIds: z.array(z.number()),
+  // Latest contribution and interest months (YYYYMM) in the data, so the
+  // statement shows how current it is rather than today's date
+  ContributionsThrough: z.number().nullable(),
+  InterestThrough: z.number().nullable(),
   Accounts: z.array(Account),
 });
 

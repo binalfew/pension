@@ -1,10 +1,7 @@
 import { getUserEmail } from "~/lib/auth.server";
-import {
-  generatePensionStatement,
-  generatePensionStatementBySapId,
-  resolveUserByEmail,
-} from "~/lib/db.server";
+import { resolveUserByEmail } from "~/lib/db.server";
 import { generatePensionStatementPDF } from "~/lib/pdf-generator.server";
+import { selectStatement } from "~/lib/statement-access.server";
 import type { Route } from "./+types/api.pdf";
 
 export async function loader({ request }: Route.LoaderArgs) {
@@ -21,50 +18,18 @@ export async function loader({ request }: Route.LoaderArgs) {
     throw new Response("User not found", { status: 404 });
   }
 
-  const { role, accounts } = resolvedUser;
-  const url = new URL(request.url);
-  const selectedSapId = url.searchParams.get("sapId");
-
-  let statementData;
-
-  // For admin users
-  if (role === "Admin") {
-    if (selectedSapId) {
-      const sapId = parseInt(selectedSapId);
-      if (isNaN(sapId)) {
-        throw new Response("Invalid SAP ID", { status: 400 });
-      }
-
-      statementData = await generatePensionStatementBySapId(sapId);
-      if (!statementData) {
-        throw new Response(`Pension statement not found for SAP ID ${sapId}`, {
-          status: 404,
-        });
-      }
-    } else {
-      throw new Response("SAP ID required for admin users", { status: 400 });
-    }
-  } else {
-    // For pensioner users - they can only view their own statement
-    const ownAccounts = accounts.filter((account) => account.SAPID);
-    if (role === "Pensioner" && ownAccounts.length > 0) {
-      const selectedAccount = selectedSapId
-        ? ownAccounts.find(
-            (account) => String(account.SAPID) === selectedSapId
-          )
-        : ownAccounts[0];
-      if (!selectedAccount) {
-        throw new Response("Forbidden", { status: 403 });
-      }
-      statementData = await generatePensionStatement(selectedAccount);
-    } else {
-      throw new Response("No pension data available", { status: 404 });
-    }
+  const selection = await selectStatement(
+    resolvedUser,
+    new URL(request.url).searchParams,
+    { fallbackToOwn: false }
+  );
+  if (selection.status === "none") {
+    throw new Response("SAP ID required for admin users", { status: 400 });
   }
-
-  if (!statementData) {
-    throw new Response("No statement data available", { status: 404 });
+  if (selection.status === "error") {
+    throw new Response(selection.message, { status: selection.httpStatus });
   }
+  const { statementData } = selection;
 
   try {
     // Generate PDF
@@ -74,7 +39,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     return new Response(pdfBuffer as BodyInit, {
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="pension-statement-${statementData.statement.EmployeeID}.pdf"`,
+        "Content-Disposition": `attachment; filename="pension-statement-${statementData.statement.SapIds.join("-")}.pdf"`,
         "Content-Length": pdfBuffer.length.toString(),
       },
     });

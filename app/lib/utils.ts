@@ -8,12 +8,33 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+export function formatAmount(amount: number) {
+  return amount.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+// Largest valid YYYYMM period. Legacy opening balances (arrears for
+// 2015-2017) use the non-period value 20152017 instead of a month.
+export const MAX_PERIOD = 999912;
+export const OPENING_PERIOD_LABEL = "2015–2017";
+
+export function isMonthPeriod(period: number): boolean {
+  return period <= MAX_PERIOD;
+}
+
 /**
  * Formats a period number (YYYYMM) into a readable date string (e.g., "Jan 2024")
  * @param period - The period number in YYYYMM format
- * @returns A formatted string like "Jan 2024" or the original input if invalid
+ * @returns A formatted string like "Jan 2024", "2015–2017" for the legacy
+ * opening balance, or the original input if invalid
  */
 export function formatPeriod(period: number): string {
+  if (!isMonthPeriod(period)) {
+    return OPENING_PERIOD_LABEL;
+  }
+
   // Convert to string and ensure it's 6 digits
   const periodStr = period.toString().padStart(6, "0");
 

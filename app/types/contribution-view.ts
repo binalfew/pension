@@ -5,7 +5,8 @@ const ContributionView = z.object({
   Amount: z.number(),
   ForPeriod: z.number(),
   InPeriod: z.number(),
-  OfficeName: z.string(),
+  // Some contributions have no office
+  OfficeName: z.string().nullable(),
   ContributionTypeName: z.string(),
 });
 
