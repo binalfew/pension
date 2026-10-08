@@ -4,18 +4,20 @@ import express from "express";
 
 declare module "react-router" {
   interface AppLoadContext {
-    VALUE_FROM_EXPRESS: string;
+    // Set per request in server.js, for the Content-Security-Policy
+    cspNonce: string;
   }
 }
 
 export const app = express();
+app.disable("x-powered-by");
 
 app.use(
   createRequestHandler({
     build: () => import("virtual:react-router/server-build"),
-    getLoadContext() {
+    getLoadContext(_req, res) {
       return {
-        VALUE_FROM_EXPRESS: "Hello from Express",
+        cspNonce: res.locals.cspNonce,
       };
     },
   }),

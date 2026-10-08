@@ -13,6 +13,7 @@ import "./app.css";
 import Navigation from "./components/navigation";
 import { getUserEmail, getUserName } from "./lib/auth.server";
 import { resolveUserByEmail } from "./lib/db.server";
+import { useNonce } from "./lib/nonce-provider";
 
 export const links: Route.LinksFunction = () => [
   { rel: "icon", href: "/favicon.svg", type: "image/svg+xml" },
@@ -67,6 +68,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 }
 
 export function Layout({ children }: { children: React.ReactNode }) {
+  const nonce = useNonce();
   return (
     <html lang="en">
       <head>
@@ -77,8 +79,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </head>
       <body>
         {children}
-        <ScrollRestoration />
-        <Scripts />
+        <ScrollRestoration nonce={nonce} />
+        <Scripts nonce={nonce} />
       </body>
     </html>
   );

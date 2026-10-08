@@ -7,6 +7,7 @@ import { renderToPipeableStream } from "react-dom/server";
 import type { AppLoadContext, EntryContext } from "react-router";
 import { ServerRouter } from "react-router";
 import { getEnv, init } from "./lib/env.server";
+import { NonceProvider } from "./lib/nonce-provider";
 
 export const streamTimeout = 5_000;
 
@@ -25,6 +26,7 @@ export default function handleRequest(
   return new Promise((resolve, reject) => {
     let shellRendered = false;
     let userAgent = request.headers.get("user-agent");
+    const nonce = loadContext.cspNonce;
 
     // Ensure requests from bots and SPA Mode renders wait for all content to load before responding
     // https://react.dev/reference/react-dom/server/renderToPipeableStream#waiting-for-all-content-to-load-for-crawlers-and-static-generation
@@ -34,8 +36,11 @@ export default function handleRequest(
         : "onShellReady";
 
     const { pipe, abort } = renderToPipeableStream(
-      <ServerRouter context={routerContext} url={request.url} />,
+      <NonceProvider value={nonce}>
+        <ServerRouter context={routerContext} url={request.url} nonce={nonce} />
+      </NonceProvider>,
       {
+        nonce,
         [readyOption]() {
           shellRendered = true;
           const body = new PassThrough();

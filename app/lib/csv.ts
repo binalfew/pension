@@ -1,6 +1,13 @@
 function csvField(value: string | number | null) {
-  const text = value === null ? "" : String(value);
-  return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+  let text = value === null ? "" : String(value);
+  // Excel runs text starting with = + - @ (or a tab or carriage return) as a
+  // formula, so a name in the database could run code when the file is
+  // opened. A leading ' makes Excel show it as plain text. Numbers are left
+  // as they are so negative amounts still work.
+  if (typeof value === "string" && /^[=+\-@\t\r]/.test(text)) {
+    text = `'${text}`;
+  }
+  return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
 // Build a CSV file in the browser and download it
