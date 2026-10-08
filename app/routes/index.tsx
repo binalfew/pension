@@ -298,7 +298,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
   // For admin users - always show the admin interface with search
   if (user.Role === "Admin") {
     return (
-      <div className="max-w-4xl mx-auto space-y-6">
+      <div className="max-w-6xl mx-auto space-y-6">
         <Card>
           <CardHeader>
             <CardTitle>Search Pension Statement</CardTitle>
@@ -437,7 +437,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
   // For pensioner users with pension statements
   if (statement && total && contributions && computedInterests) {
     return (
-      <div className="max-w-4xl mx-auto space-y-6">
+      <div className="max-w-6xl mx-auto space-y-6">
         <SapIdSwitcher
           summaries={sapIdSummaries}
           currentSapId={statement.SapIds[0]}

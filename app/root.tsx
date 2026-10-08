@@ -86,7 +86,7 @@ export default function App({ loaderData }: Route.ComponentProps) {
   return (
     <div className="min-h-screen bg-background">
       <Navigation user={user} />
-      <main className="container mx-auto px-1 py-8">
+      <main className="p-4 md:p-6">
         <Outlet />
       </main>
     </div>
