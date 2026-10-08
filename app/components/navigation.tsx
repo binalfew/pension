@@ -12,6 +12,7 @@ export default function Navigation({
     username: string;
     name?: string;
     imageUrl?: string;
+    Role?: "Admin" | "Pensioner";
   };
 }) {
   const formAction = "/auth/microsoft";
@@ -35,6 +36,17 @@ export default function Navigation({
             {user ? (
               <Form action="/logout" method="POST">
                 <div className="flex h-5 items-center space-x-4 text-sm">
+                  {user.Role === "Admin" && (
+                    <>
+                      <Link
+                        to="/data-quality"
+                        className="text-muted-foreground hover:text-foreground"
+                      >
+                        Data quality
+                      </Link>
+                      <Separator orientation="vertical" />
+                    </>
+                  )}
                   <div>Welcome, {user.name}</div>
                   <Separator orientation="vertical" />
                   <Button

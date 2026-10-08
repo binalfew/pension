@@ -1,44 +1,28 @@
-import {
-  Calendar,
-  Check,
-  Download,
-  Hash,
-  Info,
-  Loader2,
-  Search,
-  User,
-} from "lucide-react";
+import { Check, Info, Search } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import {
   data,
   Form,
-  Link,
   useFetcher,
-  useNavigation,
   useSearchParams,
   useSubmit,
 } from "react-router";
-import { useSpinDelay } from "spin-delay";
+import { PensionStatement } from "~/components/pension-statement";
+import { SapIdSwitcher } from "~/components/sap-id-switcher";
 import { StatusButton } from "~/components/status-button";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
 import { Input } from "~/components/ui/input";
 import { Label } from "~/components/ui/label";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "~/components/ui/table";
 import Welcome from "~/components/welcome";
 import { getUserEmail } from "~/lib/auth.server";
 import {
   generatePensionStatement,
   generatePensionStatementBySapId,
+  getRelatedSapIds,
+  getSapIdSummaries,
   resolveUserByEmail,
 } from "~/lib/db.server";
-import { cn, formatPeriod, useDebounce, useIsPending } from "~/lib/utils";
+import { useDebounce, useIsPending } from "~/lib/utils";
 import type { Route } from "./+types/index";
 
 export function meta({}: Route.MetaArgs) {
@@ -107,7 +91,11 @@ export async function loader({ request }: Route.LoaderArgs) {
         });
       }
 
-      const statementData = await generatePensionStatementBySapId(sapId);
+      const [statementData, sapIdSummaries] = await Promise.all([
+        generatePensionStatementBySapId(sapId),
+        // Other SAP IDs belonging to the same person
+        getRelatedSapIds(sapId).then(getSapIdSummaries),
+      ]);
       if (!statementData) {
         return data({
           user: { ...user, Role: role },
@@ -121,6 +109,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 
       return data({
         user: { ...user, Role: role },
+        sapIdSummaries,
         ...statementData,
         error: null,
       });
@@ -144,12 +133,17 @@ export async function loader({ request }: Route.LoaderArgs) {
     const selectedAccount =
       ownAccounts.find((account) => String(account.SAPID) === selectedSapId) ??
       ownAccounts[0];
-    const { statement, total, contributions, computedInterests } =
-      await generatePensionStatement(selectedAccount);
+    const [
+      { statement, total, contributions, computedInterests },
+      sapIdSummaries,
+    ] = await Promise.all([
+      generatePensionStatement(selectedAccount),
+      getSapIdSummaries(ownAccounts.map((account) => account.SAPID as number)),
+    ]);
 
     return data({
       user: { ...selectedAccount, Role: role },
-      sapIds: ownAccounts.map((account) => account.SAPID as number),
+      sapIdSummaries,
       statement,
       total,
       contributions,
@@ -213,19 +207,8 @@ export default function Home({ loaderData }: Route.ComponentProps) {
     "signedInEmail" in loaderData ? loaderData.signedInEmail : null;
   const supportEmail =
     "supportEmail" in loaderData ? loaderData.supportEmail : null;
-  const sapIds = "sapIds" in loaderData ? loaderData.sapIds : [];
-
-  // SAP ID the pensioner just switched to, while its statement is loading
-  const navigation = useNavigation();
-  const pendingSapId =
-    navigation.state === "loading" && navigation.location.pathname === "/"
-      ? Number(new URLSearchParams(navigation.location.search).get("sapId")) ||
-        null
-      : null;
-  const isSwitchingSapId = useSpinDelay(pendingSapId !== null, {
-    delay: 150,
-    minDuration: 300,
-  });
+  const sapIdSummaries =
+    "sapIdSummaries" in loaderData ? loaderData.sapIdSummaries : [];
 
   const suggestions = searchFetcher.data?.suggestions || [];
 
@@ -466,195 +449,17 @@ export default function Home({ loaderData }: Route.ComponentProps) {
 
         {/* Show statement if available */}
         {statement && total && contributions && computedInterests && (
-          <>
-            <div className="flex items-center justify-between gap-4 p-4 bg-muted/30 rounded-lg border border-border shadow-sm">
-              <div className="flex items-center gap-4">
-                <div className="flex-shrink-0">
-                  <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center">
-                    <User className="w-6 h-6 text-primary" />
-                  </div>
-                </div>
-                <div className="min-w-0">
-                  <h1 className="text-xl font-semibold text-foreground truncate">
-                    {statement.EmployeeFullName}
-                  </h1>
-                  <div className="flex items-center gap-1 mt-1 text-sm text-muted-foreground">
-                    <Hash className="w-3 h-3" />
-                    <span>SAP ID: {statement.EmployeeID}</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-4 flex-shrink-0">
-                <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                  <Calendar className="w-3 h-3" />
-                  <span>
-                    As of{" "}
-                    {new Date().toLocaleDateString("en-US", {
-                      year: "numeric",
-                      month: "long",
-                      day: "numeric",
-                    })}
-                  </span>
-                </div>
-                <a
-                  href={`/api/pdf?sapId=${statement.EmployeeID}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-2 px-3 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors text-sm font-medium"
-                >
-                  <Download className="w-4 h-4" />
-                  Download PDF
-                </a>
-              </div>
-            </div>
-
-            {/* Pension Statement Card */}
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="flex items-center justify-between text-base">
-                  <span>Pension Statement</span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg font-bold text-primary">
-                      $
-                      {total.Balance.toLocaleString(undefined, {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      })}
-                    </span>
-                  </div>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                <div className="divide-y">
-                  {statement.Accounts.filter(
-                    (acc) => acc.AccountName !== "TOTAL"
-                  ).map((acc) => (
-                    <div
-                      key={acc.AccountName}
-                      className="flex items-center justify-between px-4 py-2 hover:bg-muted/30 transition-colors"
-                    >
-                      <span className="font-medium text-sm">
-                        {acc.AccountName}
-                      </span>
-                      <span className="font-semibold text-sm">
-                        $
-                        {acc.Balance.toLocaleString(undefined, {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 2,
-                        })}
-                      </span>
-                    </div>
-                  ))}
-
-                  {/* Total Row */}
-                  <div className="flex items-center justify-between px-4 py-3 bg-primary/5 font-bold rounded-b-lg">
-                    <span className="text-sm">TOTAL BALANCE</span>
-                    <span className="text-primary">
-                      $
-                      {(
-                        statement.Accounts.find(
-                          (acc) => acc.AccountName === "TOTAL"
-                        )?.Balance ?? 0
-                      ).toLocaleString(undefined, {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      })}
-                    </span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Monthly Transactions Table */}
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg">Monthly Transactions</CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-[15%]">For Period</TableHead>
-                      <TableHead className="w-[15%]">In Period</TableHead>
-                      <TableHead className="text-right w-[20%]">
-                        Contribution (USD)
-                      </TableHead>
-                      <TableHead className="w-[15%]">Office</TableHead>
-                      <TableHead className="w-[35%]">
-                        Contribution Type
-                      </TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {contributions.map((contribution, index) => (
-                      <TableRow
-                        key={`${contribution.ForPeriod}-${contribution.ContributionTypeName}-${index}`}
-                        className={
-                          contribution.ContributionTypeName ===
-                          "EMPLOYER ACCOUNT"
-                            ? "bg-blue-50/50 dark:bg-blue-950/20"
-                            : ""
-                        }
-                      >
-                        <TableCell className="font-medium w-[15%]">
-                          {formatPeriod(contribution.ForPeriod)}
-                        </TableCell>
-                        <TableCell className="w-[15%]">
-                          {formatPeriod(contribution.InPeriod)}
-                        </TableCell>
-                        <TableCell className="text-right font-bold w-[20%]">
-                          $
-                          {contribution.Amount.toLocaleString(undefined, {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}
-                        </TableCell>
-                        <TableCell className="w-[15%]">
-                          {contribution.OfficeName}
-                        </TableCell>
-                        <TableCell className="font-medium w-[35%]">
-                          {contribution.ContributionTypeName}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Computed Interests</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Year Month</TableHead>
-                      <TableHead>Interest</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {computedInterests.map((interest) => (
-                      <TableRow key={interest.ID}>
-                        <TableCell>
-                          {formatPeriod(interest.YearMonth)}
-                        </TableCell>
-                        <TableCell>
-                          $
-                          {interest.Interest.toLocaleString(undefined, {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          </>
+          <SapIdSwitcher
+            summaries={sapIdSummaries}
+            currentSapId={statement.EmployeeID}
+          >
+            <PensionStatement
+              statement={statement}
+              total={total}
+              contributions={contributions}
+              computedInterests={computedInterests}
+            />
+          </SapIdSwitcher>
         )}
       </div>
     );
@@ -678,219 +483,17 @@ export default function Home({ loaderData }: Route.ComponentProps) {
   if (statement && total && contributions && computedInterests) {
     return (
       <div className="max-w-4xl mx-auto space-y-6">
-        {sapIds.length > 1 && (
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm text-muted-foreground">SAP ID:</span>
-            {sapIds.map((sapId) => (
-              <Link
-                key={sapId}
-                to={`?sapId=${sapId}`}
-                className={cn(
-                  "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-sm font-medium transition-colors",
-                  sapId === (pendingSapId ?? statement.EmployeeID)
-                    ? "bg-primary text-primary-foreground border-primary"
-                    : "bg-background border-border hover:bg-muted/50"
-                )}
-              >
-                {isSwitchingSapId && sapId === pendingSapId && (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                )}
-                {sapId}
-              </Link>
-            ))}
-          </div>
-        )}
-
-        <div
-          aria-busy={isSwitchingSapId}
-          className={cn(
-            "space-y-6 transition-opacity",
-            isSwitchingSapId && "opacity-50 pointer-events-none"
-          )}
+        <SapIdSwitcher
+          summaries={sapIdSummaries}
+          currentSapId={statement.EmployeeID}
         >
-          <div className="flex items-center justify-between gap-4 p-4 bg-muted/30 rounded-lg border border-border shadow-sm">
-            <div className="flex items-center gap-4">
-              <div className="flex-shrink-0">
-                <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center">
-                  <User className="w-6 h-6 text-primary" />
-                </div>
-              </div>
-              <div className="min-w-0">
-                <h1 className="text-xl font-semibold text-foreground truncate">
-                  {statement.EmployeeFullName}
-                </h1>
-                <div className="flex items-center gap-1 mt-1 text-sm text-muted-foreground">
-                  <Hash className="w-3 h-3" />
-                  <span>SAP ID: {statement.EmployeeID}</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-4 flex-shrink-0">
-              <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                <Calendar className="w-3 h-3" />
-                <span>
-                  As of{" "}
-                  {new Date().toLocaleDateString("en-US", {
-                    year: "numeric",
-                    month: "long",
-                    day: "numeric",
-                  })}
-                </span>
-              </div>
-              <a
-                href={`/api/pdf?sapId=${statement.EmployeeID}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 px-3 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors text-sm font-medium"
-              >
-                <Download className="w-4 h-4" />
-                Download PDF
-              </a>
-            </div>
-          </div>
-
-          {/* Pension Statement Card */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="flex items-center justify-between text-base">
-                <span>Pension Statement</span>
-                <div className="flex items-center gap-2">
-                  <span className="text-lg font-bold text-primary">
-                    $
-                    {total.Balance.toLocaleString(undefined, {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })}
-                  </span>
-                </div>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              <div className="divide-y">
-                {statement.Accounts.filter(
-                  (acc) => acc.AccountName !== "TOTAL"
-                ).map((acc) => (
-                  <div
-                    key={acc.AccountName}
-                    className="flex items-center justify-between px-4 py-2 hover:bg-muted/30 transition-colors"
-                  >
-                    <span className="font-medium text-sm">
-                      {acc.AccountName}
-                    </span>
-                    <span className="font-semibold text-sm">
-                      $
-                      {acc.Balance.toLocaleString(undefined, {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      })}
-                    </span>
-                  </div>
-                ))}
-
-                {/* Total Row */}
-                <div className="flex items-center justify-between px-4 py-3 bg-primary/5 font-bold rounded-b-lg">
-                  <span className="text-sm">TOTAL BALANCE</span>
-                  <span className="text-primary">
-                    $
-                    {(
-                      statement.Accounts.find(
-                        (acc) => acc.AccountName === "TOTAL"
-                      )?.Balance ?? 0
-                    ).toLocaleString(undefined, {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })}
-                  </span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Monthly Transactions Table */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg">Monthly Transactions</CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[15%]">For Period</TableHead>
-                    <TableHead className="w-[15%]">In Period</TableHead>
-                    <TableHead className="text-right w-[20%]">
-                      Contribution (USD)
-                    </TableHead>
-                    <TableHead className="w-[15%]">Office</TableHead>
-                    <TableHead className="w-[35%]">Contribution Type</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {contributions.map((contribution, index) => (
-                    <TableRow
-                      key={`${contribution.ForPeriod}-${contribution.ContributionTypeName}-${index}`}
-                      className={
-                        contribution.ContributionTypeName === "EMPLOYER ACCOUNT"
-                          ? "bg-blue-50/50 dark:bg-blue-950/20"
-                          : ""
-                      }
-                    >
-                      <TableCell className="font-medium w-[15%]">
-                        {formatPeriod(contribution.ForPeriod)}
-                      </TableCell>
-                      <TableCell className="w-[15%]">
-                        {formatPeriod(contribution.InPeriod)}
-                      </TableCell>
-                      <TableCell className="text-right font-bold w-[20%]">
-                        $
-                        {contribution.Amount.toLocaleString(undefined, {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 2,
-                        })}
-                      </TableCell>
-                      <TableCell className="w-[15%]">
-                        {contribution.OfficeName}
-                      </TableCell>
-                      <TableCell className="font-medium w-[35%]">
-                        {contribution.ContributionTypeName}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Computed Interests</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Year Month</TableHead>
-                    <TableHead>Interest</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {computedInterests.map((interest) => (
-                    <TableRow key={interest.ID}>
-                      <TableCell>{formatPeriod(interest.YearMonth)}</TableCell>
-                      <TableCell>
-                        $
-                        {interest.Interest.toLocaleString(undefined, {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 2,
-                        })}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </div>
+          <PensionStatement
+            statement={statement}
+            total={total}
+            contributions={contributions}
+            computedInterests={computedInterests}
+          />
+        </SapIdSwitcher>
       </div>
     );
   }

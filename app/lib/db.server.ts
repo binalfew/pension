@@ -2,9 +2,15 @@ import type { ComputedInterest } from "~/types/computed-interest";
 import type { Contribution } from "~/types/contribution";
 import type { ContributionType } from "~/types/contribution-type";
 import type { ContributionView } from "~/types/contribution-view";
+import type { SapIdSummary } from "~/types/sap-id-summary";
 import type { Account, Statement } from "~/types/statement";
 import type { AdminUser, User } from "~/types/user";
+import { Prisma } from "@prisma/client";
 import prisma from "./prisma";
+
+// Largest valid YYYYMM period. Legacy opening balances use the non-period
+// value 20152017 (2015-2017), which must not count as the latest activity.
+const MAX_PERIOD = 999912;
 
 // Unified user resolution - checks both tables and returns user with role
 export async function resolveUserByEmail(email: string): Promise<{
@@ -38,11 +44,14 @@ export async function resolveUserByEmail(email: string): Promise<{
   return null;
 }
 
-// Get user by SAP ID for admin viewing others' statements
+// Get user by SAP ID for admin viewing others' statements.
+// A SAP ID can have duplicate rows, so prefer the one with an email.
 export async function getUserBySapId(sapId: number): Promise<User | null> {
-  const users = await prisma.$queryRaw<
-    User[]
-  >`SELECT * FROM users WHERE SAPID = ${sapId}`;
+  const users = await prisma.$queryRaw<User[]>`
+    SELECT TOP 1 * FROM users
+    WHERE SAPID = ${sapId}
+    ORDER BY CASE WHEN Email IS NULL THEN 1 ELSE 0 END
+  `;
   return users[0] || null;
 }
 
@@ -53,10 +62,67 @@ export async function getUserByEmail(email: string): Promise<User | null> {
   return users[0] || null;
 }
 
+// One row per SAP ID, most recently active SAP ID (latest contribution) first
 export async function getUsersByEmail(email: string): Promise<User[]> {
-  return prisma.$queryRaw<
-    User[]
-  >`SELECT * FROM users WHERE Email = ${email} ORDER BY SAPID`;
+  const users = await prisma.$queryRaw<User[]>`
+    SELECT u.* FROM users u
+    WHERE u.Email = ${email}
+    ORDER BY
+      (SELECT MAX(c.ForPeriod) FROM contributions c WHERE c.SAPID = u.SAPID AND c.ForPeriod <= ${MAX_PERIOD}) DESC,
+      u.SAPID DESC
+  `;
+  return users.filter(
+    (user, index) =>
+      users.findIndex((other) => other.SAPID === user.SAPID) === index
+  );
+}
+
+// All SAP IDs registered under the same email as the given SAP ID
+// (including the SAP ID itself), most recently active first
+export async function getRelatedSapIds(sapId: number): Promise<number[]> {
+  const rows = await prisma.$queryRaw<Array<{ SAPID: number }>>`
+    SELECT u.SAPID FROM users u
+    WHERE u.SAPID IS NOT NULL
+      AND u.Email IN (
+        SELECT Email FROM users WHERE SAPID = ${sapId} AND Email IS NOT NULL
+      )
+    GROUP BY u.SAPID
+    ORDER BY
+      (SELECT MAX(c.ForPeriod) FROM contributions c WHERE c.SAPID = u.SAPID AND c.ForPeriod <= ${MAX_PERIOD}) DESC,
+      u.SAPID DESC
+  `;
+  return rows.length > 0 ? rows.map((row) => row.SAPID) : [sapId];
+}
+
+// Contribution period range and closing balance for each SAP ID, returned in
+// the same order as the input. Balance matches the statement TOTAL.
+export async function getSapIdSummaries(
+  sapIds: number[]
+): Promise<SapIdSummary[]> {
+  if (sapIds.length === 0) {
+    return [];
+  }
+
+  const rows = await prisma.$queryRaw<SapIdSummary[]>`
+    SELECT
+      s.SAPID,
+      (SELECT MIN(c.ForPeriod) FROM contributions c WHERE c.SAPID = s.SAPID AND c.ForPeriod <= ${MAX_PERIOD}) AS FirstPeriod,
+      (SELECT MAX(c.ForPeriod) FROM contributions c WHERE c.SAPID = s.SAPID AND c.ForPeriod <= ${MAX_PERIOD}) AS LastPeriod,
+      COALESCE((
+        SELECT SUM(c.Amount) FROM contributions c
+        INNER JOIN contributionTypes t ON t.ID = c.ContributionTypeID
+        WHERE c.SAPID = s.SAPID
+      ), 0) + COALESCE((
+        SELECT SUM(i.Interest) FROM ComputedInterests i WHERE i.SAPID = s.SAPID
+      ), 0) AS Balance
+    FROM (SELECT DISTINCT SAPID FROM users WHERE SAPID IN (${Prisma.join(
+      sapIds
+    )})) s
+  `;
+
+  return sapIds
+    .map((sapId) => rows.find((row) => row.SAPID === sapId))
+    .filter((row): row is SapIdSummary => row !== undefined);
 }
 
 export async function getAdminUserByEmail(
@@ -125,12 +191,21 @@ export async function generatePensionStatement(user: User): Promise<{
     ClosingBalance: 0,
   };
 
-  const contributionTypes = await getAllContributionTypes();
-  for (const contributionType of contributionTypes) {
-    const contributions = await getContributionsByType(
-      user.SAPID ?? 0,
-      contributionType.ID
-    );
+  const sapId = user.SAPID ?? 0;
+  const [contributionTypes, contributions, computedInterests] =
+    await Promise.all([
+      getAllContributionTypes(),
+      getContributionsBySapId(sapId),
+      getComputedInterestsBySapId(sapId),
+    ]);
+  const contributionsByType = await Promise.all(
+    contributionTypes.map((contributionType) =>
+      getContributionsByType(sapId, contributionType.ID)
+    )
+  );
+
+  contributionTypes.forEach((contributionType, index) => {
+    const contributions = contributionsByType[index];
     const account = {
       AccountName: contributionType.ContributionTypeName,
       Balance: contributions.reduce(
@@ -151,10 +226,7 @@ export async function generatePensionStatement(user: User): Promise<{
     total.Interest += account.Interest;
     total.Withdrawals += account.Withdrawals;
     total.ClosingBalance += account.ClosingBalance;
-  }
-
-  const contributions = await getContributionsBySapId(user.SAPID ?? 0);
-  const computedInterests = await getComputedInterestsBySapId(user.SAPID ?? 0);
+  });
 
   // Add Calculated Interests to the statement
   const cumulatedInterests = {
@@ -216,11 +288,22 @@ export async function searchUsers(query: string): Promise<
       Email: string;
     }>
   >`
-    SELECT TOP 10 SAPID, FullName, Email 
-    FROM users 
-    WHERE CAST(SAPID AS VARCHAR) LIKE ${searchQuery} 
-       OR FullName LIKE ${searchQuery}
-       OR Email LIKE ${searchQuery}
+    WITH matches AS (
+      SELECT SAPID, FullName, Email,
+        -- A SAP ID can have duplicate rows; keep one, preferring one with an email
+        ROW_NUMBER() OVER (
+          PARTITION BY SAPID
+          ORDER BY CASE WHEN Email IS NULL THEN 1 ELSE 0 END
+        ) AS RowNumber
+      FROM users
+      WHERE SAPID IS NOT NULL
+        AND (CAST(SAPID AS VARCHAR) LIKE ${searchQuery}
+          OR FullName LIKE ${searchQuery}
+          OR Email LIKE ${searchQuery})
+    )
+    SELECT TOP 10 SAPID, FullName, Email
+    FROM matches
+    WHERE RowNumber = 1
     ORDER BY 
       CASE 
         WHEN CAST(SAPID AS VARCHAR) = ${query.trim()} THEN 1
@@ -230,4 +313,85 @@ export async function searchUsers(query: string): Promise<
       END,
       FullName
   `;
+}
+
+// Data-quality issues in the users table, for the pension office to clean up
+export async function getDataQualityReport(): Promise<{
+  // Pensioners with contributions who cannot sign in because they have no email
+  missingEmail: Array<{
+    SAPID: number;
+    FullName: string | null;
+    ContributionCount: number;
+  }>;
+  // SAP IDs that appear in more than one users row
+  duplicateSapIds: Array<{
+    SAPID: number;
+    Rows: number;
+    FullNames: string | null;
+    Emails: string | null;
+  }>;
+  // Emails on a domain used by fewer than 3 users, which usually means a typo
+  unusualDomains: Array<{
+    SAPID: number | null;
+    FullName: string | null;
+    Email: string;
+  }>;
+}> {
+  const [missingEmail, duplicateSapIds, unusualDomains] = await Promise.all([
+    prisma.$queryRaw<
+      Array<{
+        SAPID: number;
+        FullName: string | null;
+        ContributionCount: number;
+      }>
+    >`
+      SELECT u.SAPID, u.FullName, COUNT(c.SAPID) AS ContributionCount
+      FROM users u
+      INNER JOIN contributions c ON c.SAPID = u.SAPID
+      WHERE (u.Email IS NULL OR LTRIM(RTRIM(u.Email)) = '')
+        -- Skip duplicate rows of a SAP ID that does have an email elsewhere
+        AND NOT EXISTS (
+          SELECT 1 FROM users o WHERE o.SAPID = u.SAPID AND o.Email IS NOT NULL
+        )
+      GROUP BY u.SAPID, u.FullName
+      ORDER BY u.FullName
+    `,
+    prisma.$queryRaw<
+      Array<{
+        SAPID: number;
+        Rows: number;
+        FullNames: string | null;
+        Emails: string | null;
+      }>
+    >`
+      SELECT
+        SAPID,
+        COUNT(*) AS Rows,
+        STRING_AGG(COALESCE(FullName, '(no name)'), ' | ') AS FullNames,
+        STRING_AGG(COALESCE(Email, '(no email)'), ' | ') AS Emails
+      FROM users
+      WHERE SAPID IS NOT NULL
+      GROUP BY SAPID
+      HAVING COUNT(*) > 1
+      ORDER BY SAPID
+    `,
+    prisma.$queryRaw<
+      Array<{ SAPID: number | null; FullName: string | null; Email: string }>
+    >`
+      WITH emails AS (
+        SELECT SAPID, FullName, Email,
+          LOWER(LTRIM(RTRIM(SUBSTRING(Email, CHARINDEX('@', Email) + 1, 255)))) AS Domain
+        FROM users
+        WHERE Email IS NOT NULL AND LTRIM(RTRIM(Email)) <> ''
+      )
+      SELECT SAPID, FullName, Email
+      FROM emails
+      WHERE Domain IN (
+        SELECT Domain FROM emails GROUP BY Domain HAVING COUNT(*) < 3
+      )
+      ORDER BY Domain, Email
+    `,
+  ]);
+
+  return { missingEmail, duplicateSapIds, unusualDomains };
 }
