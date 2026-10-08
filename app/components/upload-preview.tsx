@@ -434,7 +434,14 @@ function MissingUsers({ preview }: { preview: UploadPreview }) {
   );
 }
 
-export function UploadPreviewDetails({ preview }: { preview: UploadPreview }) {
+export function UploadPreviewDetails({
+  preview,
+  actions,
+}: {
+  preview: UploadPreview;
+  // Shown right under the summary, above the row details
+  actions?: React.ReactNode;
+}) {
   const { counts } = preview;
   // Problems with the file itself rather than a row, e.g. a missing column
   const fileErrors = preview.errors.filter((error) => !error.raw);
@@ -490,6 +497,8 @@ export function UploadPreviewDetails({ preview }: { preview: UploadPreview }) {
           imported until they are fixed in the Excel file.
         </p>
       )}
+
+      {actions}
 
       {total > 0 && <RowsTable preview={preview} />}
       {preview.missingUsers.length > 0 && <MissingUsers preview={preview} />}

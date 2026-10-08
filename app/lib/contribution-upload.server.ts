@@ -84,6 +84,7 @@ export type UploadResult = {
 };
 
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
+const IMPORT_TIMEOUT_MS = 120_000;
 
 // Accepted header names, normalized (lowercase, letters and digits only).
 // The payroll file's names come first, then the database column names.
@@ -513,88 +514,212 @@ export class UploadRejectedError extends Error {}
 // Imports the file in one transaction: either every row is applied or none.
 // `expectedHash` and `expectedStateHash` come from the preview the admin
 // confirmed; the import only runs if neither the file nor the matching
-// contributions changed since.
+// contributions changed since. Every attempt is recorded in
+// ContributionUploads, so admins can see it even if they leave the page.
 export async function importContributionUpload(
   file: File,
   expectedHash: string,
-  expectedStateHash: string
+  expectedStateHash: string,
+  uploadedBy: string
 ): Promise<UploadResult> {
   const { fileHash, rows, errors } = await readUpload(file);
-  if (fileHash !== expectedHash) {
-    throw new UploadRejectedError(
-      "The file changed since it was previewed. Preview it again before importing."
-    );
-  }
-  if (errors.length > 0) {
-    throw new UploadRejectedError("The file has errors. Fix them and upload it again.");
-  }
+  const inPeriods = [...new Set(rows.map((row) => row.InPeriod))]
+    .sort((a, b) => a - b)
+    .join(",");
 
-  const { updated, inserted } = await prisma.$transaction(
-    async (tx) => {
-      // One import at a time: two concurrent imports of the same file could
-      // both pass the NOT EXISTS check and insert every row twice. The lock
-      // is released when the transaction ends.
-      const [lock] = await tx.$queryRaw<Array<{ result: number }>>`
-        DECLARE @result int;
-        EXEC @result = sp_getapplock
-          @Resource = 'contribution-upload', @LockMode = 'Exclusive',
-          @LockOwner = 'Transaction', @LockTimeout = 60000;
-        SELECT @result AS result;
+  // Committed straight away, outside the import transaction, so other
+  // requests see the import as running
+  const [{ ID: uploadId }] = await prisma.$queryRaw<Array<{ ID: number }>>`
+    INSERT INTO ContributionUploads
+      (FileName, FileHash, UploadedBy, Status, InPeriods, FileRows)
+    OUTPUT INSERTED.ID
+    VALUES (${file.name}, ${fileHash}, ${uploadedBy}, 'running', ${inPeriods}, ${rows.length})
+  `;
+
+  try {
+    return await runImport();
+  } catch (error) {
+    const rejected = error instanceof UploadRejectedError;
+    const message = rejected
+      ? error.message
+      : "Unexpected error. Nothing was imported.";
+    try {
+      await prisma.$executeRaw`
+        UPDATE ContributionUploads
+        SET Status = ${rejected ? "rejected" : "failed"},
+          FinishedAt = SYSUTCDATETIME(), Message = ${message}
+        WHERE ID = ${uploadId}
       `;
-      if (lock.result < 0) {
-        throw new UploadRejectedError(
-          "Another contribution upload is still running. Try again in a minute."
-        );
-      }
+    } catch (historyError) {
+      // The row stays "running" and later shows as interrupted
+      console.error("Could not record failed contribution upload:", historyError);
+    }
+    throw error;
+  }
 
-      // Someone may have imported or edited these contributions since the
-      // preview. Applying the file now would overwrite changes the admin
-      // never saw.
-      const matches = await findExistingMatches(tx, rows, { lock: true });
-      if (existingStateHash(matches) !== expectedStateHash) {
-        throw new UploadRejectedError(
-          "Contributions in this file were changed in the database after the preview. " +
-            "Preview the file again to see the current values before importing."
-        );
-      }
-      if (ambiguousMatches(matches).size > 0) {
-        throw new UploadRejectedError(
-          "Some rows match more than one existing contribution. Preview the file to see which."
-        );
-      }
+  async function runImport(): Promise<UploadResult> {
+    if (fileHash !== expectedHash) {
+      throw new UploadRejectedError(
+        "The file changed since it was previewed. Preview it again before importing."
+      );
+    }
+    if (errors.length > 0) {
+      throw new UploadRejectedError("The file has errors. Fix them and upload it again.");
+    }
 
-      const [counts] = await tx.$queryRaw<
-        Array<{ updated: number; inserted: number }>
-      >`
-        ${declareUploadTable(rows)}
+    const { updated, inserted } = await prisma.$transaction(
+      async (tx) => {
+        // One import at a time: two concurrent imports of the same file could
+        // both pass the NOT EXISTS check and insert every row twice. The lock
+        // is released when the transaction ends.
+        const [lock] = await tx.$queryRaw<Array<{ result: number }>>`
+          DECLARE @result int;
+          EXEC @result = sp_getapplock
+            @Resource = 'contribution-upload', @LockMode = 'Exclusive',
+            @LockOwner = 'Transaction', @LockTimeout = 60000;
+          SELECT @result AS result;
+        `;
+        if (lock.result < 0) {
+          throw new UploadRejectedError(
+            "Another contribution upload is still running. Try again in a minute."
+          );
+        }
 
-        UPDATE c SET c.Amount = f.a, c.OfficeID = f.o
-        FROM contributions c
-        INNER JOIN @upload f
-          ON c.SAPID = f.s AND c.ForPeriod = f.f AND c.InPeriod = f.i
-          AND c.ContributionTypeID = f.t
-        WHERE c.Amount IS NULL OR c.Amount <> f.a
-          OR c.OfficeID IS NULL OR c.OfficeID <> f.o
-        OPTION (RECOMPILE);
-        DECLARE @updated int = @@ROWCOUNT;
+        // Someone may have imported or edited these contributions since the
+        // preview. Applying the file now would overwrite changes the admin
+        // never saw.
+        const matches = await findExistingMatches(tx, rows, { lock: true });
+        if (existingStateHash(matches) !== expectedStateHash) {
+          throw new UploadRejectedError(
+            "Contributions in this file were changed in the database after the preview. " +
+              "Preview the file again to see the current values before importing."
+          );
+        }
+        if (ambiguousMatches(matches).size > 0) {
+          throw new UploadRejectedError(
+            "Some rows match more than one existing contribution. Preview the file to see which."
+          );
+        }
 
-        INSERT INTO contributions (SAPID, Amount, ForPeriod, InPeriod, OfficeID, ContributionTypeID)
-        SELECT f.s, f.a, f.f, f.i, f.o, f.t
-        FROM @upload f
-        WHERE NOT EXISTS (
-          SELECT 1 FROM contributions c
-          WHERE c.SAPID = f.s AND c.ForPeriod = f.f AND c.InPeriod = f.i
+        const [counts] = await tx.$queryRaw<
+          Array<{ updated: number; inserted: number }>
+        >`
+          ${declareUploadTable(rows)}
+
+          UPDATE c SET c.Amount = f.a, c.OfficeID = f.o
+          FROM contributions c
+          INNER JOIN @upload f
+            ON c.SAPID = f.s AND c.ForPeriod = f.f AND c.InPeriod = f.i
             AND c.ContributionTypeID = f.t
-        )
-        OPTION (RECOMPILE);
-        DECLARE @inserted int = @@ROWCOUNT;
+          WHERE c.Amount IS NULL OR c.Amount <> f.a
+            OR c.OfficeID IS NULL OR c.OfficeID <> f.o
+          OPTION (RECOMPILE);
+          DECLARE @updated int = @@ROWCOUNT;
 
-        SELECT @updated AS updated, @inserted AS inserted;
-      `;
-      return counts;
-    },
-    { timeout: 120_000 }
-  );
+          INSERT INTO contributions (SAPID, Amount, ForPeriod, InPeriod, OfficeID, ContributionTypeID)
+          SELECT f.s, f.a, f.f, f.i, f.o, f.t
+          FROM @upload f
+          WHERE NOT EXISTS (
+            SELECT 1 FROM contributions c
+            WHERE c.SAPID = f.s AND c.ForPeriod = f.f AND c.InPeriod = f.i
+              AND c.ContributionTypeID = f.t
+          )
+          OPTION (RECOMPILE);
+          DECLARE @inserted int = @@ROWCOUNT;
 
-  return { fileName: file.name, rowCount: rows.length, inserted, updated };
+          SELECT @updated AS updated, @inserted AS inserted;
+        `;
+
+        // In the same transaction as the data, so "succeeded" can't be
+        // recorded for an import that was rolled back, or the other way round
+        await tx.$executeRaw`
+          UPDATE ContributionUploads
+          SET Status = 'succeeded', FinishedAt = SYSUTCDATETIME(),
+            Inserted = ${counts.inserted}, Updated = ${counts.updated}
+          WHERE ID = ${uploadId}
+        `;
+        return counts;
+      },
+      { timeout: IMPORT_TIMEOUT_MS }
+    );
+
+    return { fileName: file.name, rowCount: rows.length, inserted, updated };
+  }
+}
+
+export type UploadHistoryStatus =
+  | "running"
+  | "succeeded"
+  | "rejected"
+  | "failed"
+  | "interrupted";
+
+export type UploadHistoryEntry = {
+  ID: number;
+  FileName: string;
+  UploadedBy: string;
+  // ISO timestamps (UTC)
+  StartedAt: string;
+  FinishedAt: string | null;
+  status: UploadHistoryStatus;
+  InPeriods: number[];
+  FileRows: number;
+  Inserted: number | null;
+  Updated: number | null;
+  Message: string | null;
+};
+
+// An import can't legitimately run longer than its transaction timeout plus
+// reading the file. A "running" row older than this was cut off, e.g. by a
+// server restart; its transaction was rolled back, so nothing was saved.
+const INTERRUPTED_AFTER_MINUTES = 5;
+
+export async function getUploadHistory(limit = 20): Promise<UploadHistoryEntry[]> {
+  const uploads = await prisma.$queryRaw<
+    Array<{
+      ID: number;
+      FileName: string;
+      UploadedBy: string;
+      StartedAt: Date;
+      FinishedAt: Date | null;
+      Status: string;
+      Stale: number;
+      InPeriods: string | null;
+      FileRows: number;
+      Inserted: number | null;
+      Updated: number | null;
+      Message: string | null;
+    }>
+  >`
+    SELECT TOP (${limit}) ID, FileName, UploadedBy, StartedAt, FinishedAt,
+      Status, InPeriods, FileRows, Inserted, Updated, Message,
+      CASE WHEN StartedAt < DATEADD(minute, ${-INTERRUPTED_AFTER_MINUTES}, SYSUTCDATETIME())
+        THEN 1 ELSE 0 END AS Stale
+    FROM ContributionUploads
+    ORDER BY StartedAt DESC, ID DESC
+  `;
+
+  return uploads.map((upload) => {
+    const interrupted = upload.Status === "running" && upload.Stale === 1;
+    return {
+      ID: upload.ID,
+      FileName: upload.FileName,
+      UploadedBy: upload.UploadedBy,
+      StartedAt: upload.StartedAt.toISOString(),
+      FinishedAt: upload.FinishedAt?.toISOString() ?? null,
+      status: interrupted
+        ? "interrupted"
+        : (upload.Status as UploadHistoryStatus),
+      InPeriods: (upload.InPeriods ?? "")
+        .split(",")
+        .filter(Boolean)
+        .map(Number),
+      FileRows: upload.FileRows,
+      Inserted: upload.Inserted,
+      Updated: upload.Updated,
+      Message: interrupted
+        ? "The import stopped before it finished, for example because the server restarted. Nothing was saved; preview and import the file again."
+        : upload.Message,
+    };
+  });
 }

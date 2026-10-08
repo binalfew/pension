@@ -1,11 +1,17 @@
+import { Loader2 } from "lucide-react";
 import { useEffect, useRef } from "react";
-import { Form, redirect, useNavigation } from "react-router";
+import { Form, redirect, useNavigation, useRevalidator } from "react-router";
 import { StatusButton } from "~/components/status-button";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
 import { Input } from "~/components/ui/input";
+import {
+  formatUploadTime,
+  UploadHistory,
+} from "~/components/upload-history";
 import { UploadPreviewDetails } from "~/components/upload-preview";
 import { getUserEmail } from "~/lib/auth.server";
 import {
+  getUploadHistory,
   importContributionUpload,
   previewContributionUpload,
   UploadRejectedError,
@@ -31,8 +37,11 @@ async function requireAdminEmail(request: Request) {
 
 export async function loader({ request }: Route.LoaderArgs) {
   await requireAdminEmail(request);
-  return null;
+  return { history: await getUploadHistory() };
 }
+
+// How often the page checks on an import that's in progress
+const POLL_INTERVAL_MS = 3000;
 
 type ActionData =
   | { intent: "preview"; preview: UploadPreview }
@@ -55,7 +64,8 @@ export async function action({
       const result = await importContributionUpload(
         file,
         String(formData.get("fileHash") ?? ""),
-        String(formData.get("stateHash") ?? "")
+        String(formData.get("stateHash") ?? ""),
+        adminEmail
       );
       console.log(
         `Contribution upload by ${adminEmail}: ${result.fileName}, ` +
@@ -74,9 +84,12 @@ export async function action({
 }
 
 export default function ContributionsUpload({
+  loaderData,
   actionData,
 }: Route.ComponentProps) {
+  const { history } = loaderData;
   const navigation = useNavigation();
+  const revalidator = useRevalidator();
   const formRef = useRef<HTMLFormElement>(null);
   const submittingIntent =
     navigation.state === "submitting"
@@ -86,8 +99,28 @@ export default function ContributionsUpload({
   const preview = actionData?.intent === "preview" ? actionData.preview : null;
   const result = actionData?.intent === "import" ? actionData.result : null;
   const toImport = preview ? preview.counts.new + preview.counts.changed : 0;
+  // Running in another tab, by another admin, or before this page was
+  // reloaded
+  const runningUpload = history.find((upload) => upload.status === "running");
   const canImport =
-    preview !== null && preview.errors.length === 0 && toImport > 0;
+    preview !== null &&
+    preview.errors.length === 0 &&
+    toImport > 0 &&
+    !runningUpload;
+
+  // Keep checking until the running import finishes, fails or is
+  // interrupted; the history then shows how it ended
+  useEffect(() => {
+    if (!runningUpload) {
+      return;
+    }
+    const timer = setInterval(() => {
+      if (revalidator.state === "idle" && navigation.state === "idle") {
+        revalidator.revalidate();
+      }
+    }, POLL_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, [runningUpload, revalidator, navigation.state]);
 
   // Start over with an empty form once an import is done
   useEffect(() => {
@@ -136,6 +169,22 @@ export default function ContributionsUpload({
           </CardContent>
         </Card>
 
+        {runningUpload && submittingIntent !== "import" && (
+          <Card className="border-blue-500">
+            <CardContent className="flex items-start gap-3 text-sm">
+              <Loader2 className="mt-0.5 size-4 shrink-0 animate-spin text-blue-600" />
+              <p>
+                <span className="font-medium">Import in progress:</span>{" "}
+                {runningUpload.FileName} ({runningUpload.FileRows.toLocaleString()}{" "}
+                rows) by {runningUpload.UploadedBy}, started{" "}
+                {formatUploadTime(runningUpload.StartedAt)}. This page checks
+                every few seconds and the upload history below shows how it
+                ends. Another import can start once it has finished.
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
         {actionData?.intent === "error" && (
           <p className="text-sm text-destructive">{actionData.message}</p>
         )}
@@ -153,29 +202,44 @@ export default function ContributionsUpload({
           </Card>
         )}
 
-        {preview && (
+        {preview ? (
           <>
-            {/* Fresh filters and paging for each file */}
-            <UploadPreviewDetails key={preview.fileHash} preview={preview} />
             <input type="hidden" name="fileHash" value={preview.fileHash} />
             <input type="hidden" name="stateHash" value={preview.stateHash} />
-            <div className="flex items-center justify-end gap-3">
-              {!canImport && preview.errors.length === 0 && (
-                <span className="text-sm text-muted-foreground">
-                  Everything in this file is already loaded.
-                </span>
-              )}
-              <StatusButton
-                type="submit"
-                name="intent"
-                value="import"
-                status={submittingIntent === "import" ? "pending" : "idle"}
-                disabled={!canImport || navigation.state !== "idle"}
-              >
-                Import {toImport.toLocaleString()} rows
-              </StatusButton>
-            </div>
+            {/* Fresh filters and paging for each file */}
+            <UploadPreviewDetails
+              key={preview.fileHash}
+              preview={preview}
+              actions={
+                <>
+                  <div className="flex items-center justify-end gap-3">
+                    {preview.errors.length === 0 && toImport === 0 && (
+                      <span className="text-sm text-muted-foreground">
+                        Everything in this file is already loaded.
+                      </span>
+                    )}
+                    {runningUpload && toImport > 0 && (
+                      <span className="text-sm text-muted-foreground">
+                        Wait for the import in progress to finish.
+                      </span>
+                    )}
+                    <StatusButton
+                      type="submit"
+                      name="intent"
+                      value="import"
+                      status={submittingIntent === "import" ? "pending" : "idle"}
+                      disabled={!canImport || navigation.state !== "idle"}
+                    >
+                      Import {toImport.toLocaleString()} rows
+                    </StatusButton>
+                  </div>
+                  <UploadHistory history={history} />
+                </>
+              }
+            />
           </>
+        ) : (
+          <UploadHistory history={history} />
         )}
       </Form>
     </div>
