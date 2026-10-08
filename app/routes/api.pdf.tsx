@@ -21,7 +21,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     throw new Response("User not found", { status: 404 });
   }
 
-  const { user, role } = resolvedUser;
+  const { role, accounts } = resolvedUser;
   const url = new URL(request.url);
   const selectedSapId = url.searchParams.get("sapId");
 
@@ -46,8 +46,17 @@ export async function loader({ request }: Route.LoaderArgs) {
     }
   } else {
     // For pensioner users - they can only view their own statement
-    if (role === "Pensioner" && "SAPID" in user && user.SAPID) {
-      statementData = await generatePensionStatement(user);
+    const ownAccounts = accounts.filter((account) => account.SAPID);
+    if (role === "Pensioner" && ownAccounts.length > 0) {
+      const selectedAccount = selectedSapId
+        ? ownAccounts.find(
+            (account) => String(account.SAPID) === selectedSapId
+          )
+        : ownAccounts[0];
+      if (!selectedAccount) {
+        throw new Response("Forbidden", { status: 403 });
+      }
+      statementData = await generatePensionStatement(selectedAccount);
     } else {
       throw new Response("No pension data available", { status: 404 });
     }

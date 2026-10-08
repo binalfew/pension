@@ -10,6 +10,8 @@ import prisma from "./prisma";
 export async function resolveUserByEmail(email: string): Promise<{
   user: User | AdminUser;
   role: "Admin" | "Pensioner";
+  // All pensioner records for this email (one per SAP ID); empty for admins
+  accounts: User[];
 } | null> {
   // First check admin users
   const adminUser = await getAdminUserByEmail(email);
@@ -17,15 +19,18 @@ export async function resolveUserByEmail(email: string): Promise<{
     return {
       user: adminUser,
       role: "Admin" as const,
+      accounts: [],
     };
   }
 
   // Then check pensioner users
-  const pensionerUser = await getUserByEmail(email);
-  if (pensionerUser) {
+  // A pensioner can have multiple SAP IDs registered under the same email
+  const pensionerUsers = await getUsersByEmail(email);
+  if (pensionerUsers.length > 0) {
     return {
-      user: pensionerUser,
+      user: pensionerUsers[0],
       role: "Pensioner" as const,
+      accounts: pensionerUsers,
     };
   }
 
@@ -46,6 +51,12 @@ export async function getUserByEmail(email: string): Promise<User | null> {
     User[]
   >`SELECT * FROM users WHERE Email = ${email}`;
   return users[0] || null;
+}
+
+export async function getUsersByEmail(email: string): Promise<User[]> {
+  return prisma.$queryRaw<
+    User[]
+  >`SELECT * FROM users WHERE Email = ${email} ORDER BY SAPID`;
 }
 
 export async function getAdminUserByEmail(
