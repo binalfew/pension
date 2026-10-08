@@ -11,7 +11,11 @@ import {
   TableHeader,
   TableRow,
 } from "~/components/ui/table";
-import { findContributionGaps, getAnnualSummary } from "~/lib/statement-analysis";
+import {
+  findContributionGaps,
+  getAnnualSummary,
+  getMonthlyBalances,
+} from "~/lib/statement-analysis";
 import { formatAmount, formatPeriod } from "~/lib/utils";
 import type { ComputedInterest } from "~/types/computed-interest";
 import type { ContributionView } from "~/types/contribution-view";
@@ -32,8 +36,11 @@ export function PensionStatement({
 }) {
   const isCombined = statement.SapIds.length > 1;
   // Query string for downloading this same statement
-  const downloadQuery = `sapId=${statement.SapIds[0]}${isCombined ? "&view=combined" : ""}`;
+  const downloadQuery = `sapId=${statement.SapIds[0]}${
+    isCombined ? "&view=combined" : ""
+  }`;
   const annualSummary = getAnnualSummary(contributions, computedInterests);
+  const balanceHistory = getMonthlyBalances(contributions, computedInterests);
   const gaps = findContributionGaps(contributions);
 
   return (
@@ -61,10 +68,14 @@ export function PensionStatement({
               <Calendar className="w-3 h-3" />
               <span>
                 {statement.ContributionsThrough !== null
-                  ? `Contributions as of ${formatPeriod(statement.ContributionsThrough)}`
+                  ? `Contributions as of ${formatPeriod(
+                      statement.ContributionsThrough
+                    )}`
                   : "No dated contributions"}
                 {statement.InterestThrough !== null &&
-                  ` · Interest as of ${formatPeriod(statement.InterestThrough)}`}
+                  ` · Interest as of ${formatPeriod(
+                    statement.InterestThrough
+                  )}`}
               </span>
             </div>
           </div>
@@ -135,12 +146,9 @@ export function PensionStatement({
         </CardContent>
       </Card>
 
-      <BalanceHistory rows={annualSummary} />
+      <BalanceHistory rows={annualSummary} history={balanceHistory} />
 
-      <TransactionsTable
-        contributions={contributions}
-        showSapId={isCombined}
-      />
+      <TransactionsTable contributions={contributions} showSapId={isCombined} />
 
       <Card>
         <CardHeader>

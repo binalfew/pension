@@ -98,6 +98,85 @@ export function getAnnualSummary(
     });
 }
 
+export type MonthlyBalance = {
+  period: number;
+  // Added during the month
+  contributed: number;
+  interest: number;
+  // Running totals at the end of the month
+  contributionsToDate: number;
+  interestToDate: number;
+  balance: number;
+};
+
+export type BalanceHistoryData = {
+  // 2015-2017 arrears, counted before the first month
+  opening: number;
+  // Every month from the first to the last recorded one, oldest first
+  months: MonthlyBalance[];
+  // Last month interest has been computed for
+  interestThrough: number | null;
+};
+
+// Month-by-month running balance. Contributions count in the month they are
+// for (ForPeriod), interest in the month it was computed for.
+export function getMonthlyBalances(
+  contributions: ContributionView[],
+  computedInterests: ComputedInterest[]
+): BalanceHistoryData {
+  let opening = 0;
+  const contributedByMonth = new Map<number, number>();
+  const interestByMonth = new Map<number, number>();
+  for (const contribution of contributions) {
+    const period = contribution.ForPeriod;
+    if (isMonthPeriod(period)) {
+      contributedByMonth.set(
+        period,
+        (contributedByMonth.get(period) ?? 0) + contribution.Amount
+      );
+    } else {
+      opening += contribution.Amount;
+    }
+  }
+  for (const interest of computedInterests) {
+    interestByMonth.set(
+      interest.YearMonth,
+      (interestByMonth.get(interest.YearMonth) ?? 0) + interest.Interest
+    );
+  }
+
+  const periods = [...contributedByMonth.keys(), ...interestByMonth.keys()];
+  const interestThrough =
+    interestByMonth.size > 0 ? Math.max(...interestByMonth.keys()) : null;
+  if (periods.length === 0) {
+    return { opening, months: [], interestThrough };
+  }
+
+  const months: MonthlyBalance[] = [];
+  const last = Math.max(...periods);
+  let contributionsToDate = opening;
+  let interestToDate = 0;
+  for (
+    let period = Math.min(...periods);
+    period <= last;
+    period = nextMonth(period)
+  ) {
+    const contributed = contributedByMonth.get(period) ?? 0;
+    const interest = interestByMonth.get(period) ?? 0;
+    contributionsToDate += contributed;
+    interestToDate += interest;
+    months.push({
+      period,
+      contributed,
+      interest,
+      contributionsToDate,
+      interestToDate,
+      balance: contributionsToDate + interestToDate,
+    });
+  }
+  return { opening, months, interestThrough };
+}
+
 export type ContributionGap = {
   sapId: number;
   // First and last affected month (YYYYMM)
@@ -149,8 +228,8 @@ export function findContributionGaps(
       const kind: ContributionGap["kind"] | null = !accounts
         ? "missing"
         : accounts.has(EMPLOYEE_ACCOUNT) && !accounts.has(EMPLOYER_ACCOUNT)
-          ? "no-employer-share"
-          : null;
+        ? "no-employer-share"
+        : null;
 
       if (current && current.kind === kind) {
         current.to = period;
@@ -209,5 +288,7 @@ export function discrepancyMailto({
     "",
     "Thank you.",
   ].join("\n");
-  return `mailto:${supportEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  return `mailto:${supportEmail}?subject=${encodeURIComponent(
+    subject
+  )}&body=${encodeURIComponent(body)}`;
 }
