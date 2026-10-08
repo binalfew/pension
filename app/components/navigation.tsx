@@ -1,7 +1,13 @@
-import { Form, Link } from "react-router";
+import { Form, Link, NavLink } from "react-router";
 import { Button } from "~/components/ui/button";
 import { Logo } from "./logo";
 import { Separator } from "./ui/separator";
+
+const navItems = [
+  { to: "/", label: "Statement" },
+  { to: "/contributions-upload", label: "Upload" },
+  { to: "/data-quality", label: "Quality" },
+];
 
 export default function Navigation({
   user,
@@ -38,19 +44,20 @@ export default function Navigation({
                 <div className="flex h-5 items-center space-x-4 text-sm">
                   {user.Role === "Admin" && (
                     <>
-                      <Link
-                        to="/contributions-upload"
-                        className="text-primary-foreground/70 hover:text-primary-foreground"
-                      >
-                        Upload contributions
-                      </Link>
-                      <Separator orientation="vertical" className="bg-primary-foreground/30" />
-                      <Link
-                        to="/data-quality"
-                        className="text-primary-foreground/70 hover:text-primary-foreground"
-                      >
-                        Data quality
-                      </Link>
+                      {navItems.map((item) => (
+                        <NavLink
+                          key={item.to}
+                          to={item.to}
+                          end
+                          className={({ isActive }) =>
+                            isActive
+                              ? "font-medium text-primary-foreground"
+                              : "text-primary-foreground/70 hover:text-primary-foreground"
+                          }
+                        >
+                          {item.label}
+                        </NavLink>
+                      ))}
                       <Separator orientation="vertical" className="bg-primary-foreground/30" />
                     </>
                   )}
