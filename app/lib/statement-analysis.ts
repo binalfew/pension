@@ -373,30 +373,70 @@ export function discrepancyMailto({
   )}&body=${encodeURIComponent(body)}`;
 }
 
+export type ProjectionYear = {
+  year: number;
+  contributions: number;
+  interest: number;
+  // Balance at the end of December
+  closingBalance: number;
+};
+
 export type Projection = {
   months: number;
   contributions: number;
+  interest: number;
   balance: number;
+  years: ProjectionYear[];
 };
 
-// Adds the same contribution every month, with no interest
+// Adds the same contribution every month and compounds interest monthly, the
+// way the pension database computes it: each month's interest is the annual
+// rate / 12 on the balance including that month's contribution
 export function projectBalance({
   balance,
   fromPeriod,
   toYear,
   monthlyContribution,
+  annualRate,
 }: {
   balance: number;
+  // Projects from the month after this one, YYYYMM
   fromPeriod: number;
   // Projects to the end of December of this year
   toYear: number;
   monthlyContribution: number;
+  // Percent a year, e.g. 4.5
+  annualRate: number;
 }): Projection {
   const fromYear = Math.floor(fromPeriod / 100);
-  const months = Math.max(
-    (toYear - fromYear) * 12 + (12 - (fromPeriod % 100)),
-    0
-  );
-  const contributions = monthlyContribution * months;
-  return { months, contributions, balance: balance + contributions };
+  const monthlyRate = annualRate / 100 / 12;
+  const years: ProjectionYear[] = [];
+  let running = balance;
+  let months = 0;
+
+  for (let year = fromYear; year <= toYear; year++) {
+    const firstMonth = year === fromYear ? (fromPeriod % 100) + 1 : 1;
+    let contributions = 0;
+    let interest = 0;
+    for (let month = firstMonth; month <= 12; month++) {
+      running += monthlyContribution;
+      const monthInterest = running * monthlyRate;
+      running += monthInterest;
+      contributions += monthlyContribution;
+      interest += monthInterest;
+      months++;
+    }
+    // Nothing left of the current year when projecting from December
+    if (firstMonth <= 12) {
+      years.push({ year, contributions, interest, closingBalance: running });
+    }
+  }
+
+  return {
+    months,
+    contributions: years.reduce((sum, year) => sum + year.contributions, 0),
+    interest: years.reduce((sum, year) => sum + year.interest, 0),
+    balance: running,
+    years,
+  };
 }

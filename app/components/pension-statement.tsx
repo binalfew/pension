@@ -1,6 +1,6 @@
-import { Calendar, Download, Hash, User } from "lucide-react";
+import { Calendar, Download, Hash, TrendingUp, User } from "lucide-react";
+import { Link } from "react-router";
 import { BalanceHistory } from "~/components/balance-history";
-import { BalanceProjection } from "~/components/balance-projection";
 import { ContributionGaps } from "~/components/contribution-gaps";
 import { StatementSummary } from "~/components/statement-summary";
 import { iconTone } from "~/components/table-styles";
@@ -20,14 +20,11 @@ export function PensionStatement({
   statement,
   contributions,
   computedInterests,
-  combinedBalance,
   supportEmail,
 }: {
   statement: Statement;
   contributions: ContributionView[];
   computedInterests: ComputedInterest[];
-  // Total balance across all of the person's SAP IDs
-  combinedBalance: number;
   supportEmail: string | null;
 }) {
   const isCombined = statement.SapIds.length > 1;
@@ -77,16 +74,25 @@ export function PensionStatement({
           </div>
         </div>
 
-        <Button asChild variant="outline" size="sm">
-          <a
-            href={`/api/pdf?${downloadQuery}`}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Download />
-            Download PDF
-          </a>
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button asChild variant="outline" size="sm">
+            {/* Pensioners always get their own projection, whatever the sapId */}
+            <Link to={`/projection?sapId=${statement.SapIds[0]}`}>
+              <TrendingUp />
+              Projected balance
+            </Link>
+          </Button>
+          <Button asChild variant="outline" size="sm">
+            <a
+              href={`/api/pdf?${downloadQuery}`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <Download />
+              Download PDF
+            </a>
+          </Button>
+        </div>
       </div>
 
       <ContributionGaps
@@ -103,8 +109,6 @@ export function PensionStatement({
       />
 
       <BalanceHistory rows={annualSummary} history={balanceHistory} />
-
-      <BalanceProjection defaultBalance={combinedBalance} />
 
       <TransactionsTable
         contributions={contributions}

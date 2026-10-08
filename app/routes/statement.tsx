@@ -155,11 +155,6 @@ export default function Home({ loaderData }: Route.ComponentProps) {
     "supportEmail" in loaderData ? loaderData.supportEmail : null;
   const sapIdSummaries =
     "sapIdSummaries" in loaderData ? loaderData.sapIdSummaries : [];
-  // Across all of the person's SAP IDs, whichever statement is shown
-  const combinedBalance =
-    sapIdSummaries.length > 0
-      ? sapIdSummaries.reduce((sum, summary) => sum + summary.Balance, 0)
-      : total?.Balance ?? 0;
 
   const suggestions = searchFetcher.data?.suggestions || [];
 
@@ -412,7 +407,6 @@ export default function Home({ loaderData }: Route.ComponentProps) {
               statement={statement}
               contributions={contributions}
               computedInterests={computedInterests}
-              combinedBalance={combinedBalance}
               supportEmail={supportEmail}
             />
           </SapIdSwitcher>
@@ -448,7 +442,6 @@ export default function Home({ loaderData }: Route.ComponentProps) {
             statement={statement}
             contributions={contributions}
             computedInterests={computedInterests}
-            combinedBalance={combinedBalance}
             supportEmail={supportEmail}
           />
         </SapIdSwitcher>

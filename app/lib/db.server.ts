@@ -5,7 +5,12 @@ import type { ContributionView } from "~/types/contribution-view";
 import type { SapIdSummary } from "~/types/sap-id-summary";
 import type { Account, Statement } from "~/types/statement";
 import type { AdminUser, User } from "~/types/user";
-import { CHART_MONTHS, type SystemOverview } from "./overview";
+import {
+  addMonths,
+  CHART_MONTHS,
+  type QualityCheckCount,
+  type SystemOverview,
+} from "./overview";
 import type { NearMatch, SapIdCheck, SignInCheck } from "./sign-in-check";
 import { Prisma } from "@prisma/client";
 import prisma from "./prisma";
@@ -620,6 +625,127 @@ export async function getDataQualityReport(): Promise<{
   };
 }
 
+// Figures a balance projection starts from, for all of one person's SAP IDs
+export type ProjectionInputs = {
+  // Same as the statement TOTAL, summed over the SAP IDs
+  balance: number;
+  // Latest month with interest for these SAP IDs, YYYYMM
+  interestThrough: number | null;
+  // Average monthly contribution over the latest payroll months, so someone
+  // who has stopped contributing gets 0
+  averageContribution: number;
+  contributionFrom: number | null;
+  contributionTo: number | null;
+  // Annual interest rates (percent) of the latest months interest was
+  // computed for, newest first
+  rates: Array<{ period: number; rate: number }>;
+};
+
+export const PROJECTION_RECENT_MONTHS = 12;
+
+export async function getProjectionInputs(
+  sapIds: number[]
+): Promise<ProjectionInputs> {
+  const ids = Prisma.join(sapIds);
+  const [summaries, [figures], rates] = await Promise.all([
+    getSapIdSummaries(sapIds),
+    prisma.$queryRaw<
+      Array<{
+        interestThrough: number | null;
+        contributionTo: number | null;
+        contributionTotal: number | null;
+      }>
+    >`
+      DECLARE @to int = (
+        SELECT MAX(InPeriod) FROM contributions WHERE InPeriod <= ${MAX_PERIOD}
+      );
+      -- First month of the window ending at @to, YYYYMM
+      DECLARE @index int = (@to / 100) * 12 + (@to % 100) - 1
+        - ${PROJECTION_RECENT_MONTHS - 1};
+      DECLARE @from int = (@index / 12) * 100 + (@index % 12) + 1;
+      SELECT
+        (SELECT MAX(YearMonth) FROM ComputedInterests
+          WHERE SAPID IN (${ids})) AS interestThrough,
+        @to AS contributionTo,
+        (SELECT SUM(c.Amount) FROM contributions c
+          INNER JOIN contributionTypes t ON t.ID = c.ContributionTypeID
+          WHERE c.SAPID IN (${ids}) AND c.InPeriod BETWEEN @from AND @to
+        ) AS contributionTotal
+    `,
+    // The rates the interest computation used; each month's interest is the
+    // balance times this rate / 12
+    prisma.$queryRaw<Array<{ period: number; rate: number }>>`
+      SELECT TOP (${PROJECTION_RECENT_MONTHS}) Month AS period, Interest AS rate
+      FROM MonthlyInterestStaging
+      ORDER BY Month DESC
+    `,
+  ]);
+
+  const contributionTo = figures?.contributionTo ?? null;
+  return {
+    balance: summaries.reduce((sum, summary) => sum + Number(summary.Balance), 0),
+    interestThrough: figures?.interestThrough ?? null,
+    averageContribution:
+      Number(figures?.contributionTotal ?? 0) / PROJECTION_RECENT_MONTHS,
+    contributionFrom:
+      contributionTo !== null
+        ? addMonths(contributionTo, -(PROJECTION_RECENT_MONTHS - 1))
+        : null,
+    contributionTo,
+    rates: rates.map((row) => ({
+      period: row.period,
+      rate: Number(row.rate),
+    })),
+  };
+}
+
+// Issue counts per data-quality check, in the order the report shows them
+export async function getDataQualitySummary(): Promise<QualityCheckCount[]> {
+  const report = await getDataQualityReport();
+  return [
+    {
+      id: "orphan-contributions",
+      label: "Contributions with no pensioner",
+      count: report.orphanContributions.length,
+    },
+    {
+      id: "missing-email",
+      label: "Pensioners without an email",
+      count: report.missingEmail.length,
+    },
+    {
+      id: "duplicate-sap-ids",
+      label: "Duplicate SAP IDs",
+      count: report.duplicateSapIds.length,
+    },
+    {
+      id: "unknown-types",
+      label: "Unknown contribution types",
+      count: report.unknownTypes.length,
+    },
+    {
+      id: "no-contributions",
+      label: "Pensioners with no contributions",
+      count: report.noContributions.length,
+    },
+    {
+      id: "missing-sap-id",
+      label: "Records without a SAP ID",
+      count: report.missingSapId.length,
+    },
+    {
+      id: "orphan-interest",
+      label: "Interest with no pensioner",
+      count: report.orphanInterest.length,
+    },
+    {
+      id: "admin-pensioners",
+      label: "Admins who are also pensioners",
+      count: report.adminPensioners.length,
+    },
+  ];
+}
+
 // Escapes LIKE wildcards so a search for "first_last" matches the
 // underscore literally; use with ESCAPE '\'
 function escapeLike(text: string) {
@@ -792,11 +918,21 @@ export async function getSystemOverview(): Promise<SystemOverview> {
       GROUP BY InPeriod
       ORDER BY InPeriod DESC
     `,
-    prisma.$queryRaw<Array<{ period: number; people: number }>>`
-      SELECT TOP 1 YearMonth AS period, COUNT(DISTINCT SAPID) AS people
-      FROM ComputedInterests
-      GROUP BY YearMonth
-      ORDER BY YearMonth DESC
+    prisma.$queryRaw<
+      Array<{ period: number | null; people: number; missing: number }>
+    >`
+      DECLARE @latest int = (SELECT MAX(YearMonth) FROM ComputedInterests);
+      SELECT @latest AS period,
+        (SELECT COUNT(DISTINCT SAPID) FROM ComputedInterests
+          WHERE YearMonth = @latest) AS people,
+        -- Pensioners with contributions by then but no interest for it
+        (SELECT COUNT(DISTINCT c.SAPID) FROM contributions c
+          WHERE c.InPeriod <= @latest
+            AND EXISTS (SELECT 1 FROM users u WHERE u.SAPID = c.SAPID)
+            AND NOT EXISTS (
+              SELECT 1 FROM ComputedInterests i
+              WHERE i.SAPID = c.SAPID AND i.YearMonth = @latest
+            )) AS missing
     `,
   ]);
 
@@ -816,5 +952,6 @@ export async function getSystemOverview(): Promise<SystemOverview> {
     })),
     latestInterestMonth: interest?.period ?? null,
     latestInterestPeople: Number(interest?.people ?? 0),
+    interestMissingPeople: Number(interest?.missing ?? 0),
   };
 }

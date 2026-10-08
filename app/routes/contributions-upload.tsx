@@ -26,6 +26,7 @@ import {
   type UploadResult,
 } from "~/lib/contribution-upload.server";
 import { resolveUserByEmail } from "~/lib/db.server";
+import { invalidateOverview } from "~/lib/overview.server";
 import type { Route } from "./+types/contributions-upload";
 
 export function meta({}: Route.MetaArgs) {
@@ -74,6 +75,8 @@ export async function action({
         String(formData.get("stateHash") ?? ""),
         adminEmail
       );
+      // New contributions change the overview's figures
+      invalidateOverview();
       console.log(
         `Contribution upload by ${adminEmail}: ${result.fileName}, ` +
           `${result.inserted} inserted, ${result.updated} updated`

@@ -6,12 +6,18 @@ import { cn } from "~/lib/utils";
 import { Logo } from "./logo";
 import { Separator } from "./ui/separator";
 
-const navItems = [
+const adminNavItems = [
   { to: "/", label: "Overview" },
   { to: "/statement", label: "Statement" },
+  { to: "/projection", label: "Projection" },
   { to: "/contributions-upload", label: "Upload" },
   { to: "/data-quality", label: "Quality" },
   { to: "/diagnosis", label: "Diagnosis" },
+];
+
+const pensionerNavItems = [
+  { to: "/statement", label: "Statement" },
+  { to: "/projection", label: "Projection" },
 ];
 
 const navLinkClass = ({ isActive }: { isActive: boolean }) =>
@@ -33,6 +39,12 @@ export default function Navigation({
 }) {
   const formAction = "/auth/microsoft";
   const isAdmin = user?.Role === "Admin";
+  // Signed-in people without a pension record get no menu
+  const navItems = isAdmin
+    ? adminNavItems
+    : user?.Role === "Pensioner"
+    ? pensionerNavItems
+    : [];
   const [menuOpen, setMenuOpen] = useState(false);
   const location = useLocation();
 
@@ -65,7 +77,7 @@ export default function Navigation({
                   className="hidden min-w-0 md:block"
                 >
                   <div className="flex h-5 items-center space-x-4 text-sm">
-                    {isAdmin && (
+                    {navItems.length > 0 && (
                       <>
                         {navItems.map((item) => (
                           <NavLink
@@ -136,8 +148,7 @@ export default function Navigation({
             <p className="truncate px-2 pb-2 text-primary-foreground/70">
               Signed in as {user.name}
             </p>
-            {isAdmin &&
-              navItems.map((item) => (
+            {navItems.map((item) => (
                 <NavLink
                   key={item.to}
                   to={item.to}
