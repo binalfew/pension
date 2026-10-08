@@ -1,5 +1,6 @@
 import { Calendar, Download, Hash, User } from "lucide-react";
 import { BalanceHistory } from "~/components/balance-history";
+import { BalanceProjection } from "~/components/balance-projection";
 import { ContributionGaps } from "~/components/contribution-gaps";
 import { StatementSummary } from "~/components/statement-summary";
 import { TransactionsTable } from "~/components/transactions-table";
@@ -17,11 +18,14 @@ export function PensionStatement({
   statement,
   contributions,
   computedInterests,
+  combinedBalance,
   supportEmail,
 }: {
   statement: Statement;
   contributions: ContributionView[];
   computedInterests: ComputedInterest[];
+  // Total balance across all of the person's SAP IDs
+  combinedBalance: number;
   supportEmail: string | null;
 }) {
   const isCombined = statement.SapIds.length > 1;
@@ -98,6 +102,8 @@ export function PensionStatement({
       />
 
       <BalanceHistory rows={annualSummary} history={balanceHistory} />
+
+      <BalanceProjection defaultBalance={combinedBalance} />
 
       <TransactionsTable
         contributions={contributions}

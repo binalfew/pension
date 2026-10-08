@@ -372,3 +372,31 @@ export function discrepancyMailto({
     subject
   )}&body=${encodeURIComponent(body)}`;
 }
+
+export type Projection = {
+  months: number;
+  contributions: number;
+  balance: number;
+};
+
+// Adds the same contribution every month, with no interest
+export function projectBalance({
+  balance,
+  fromPeriod,
+  toYear,
+  monthlyContribution,
+}: {
+  balance: number;
+  fromPeriod: number;
+  // Projects to the end of December of this year
+  toYear: number;
+  monthlyContribution: number;
+}): Projection {
+  const fromYear = Math.floor(fromPeriod / 100);
+  const months = Math.max(
+    (toYear - fromYear) * 12 + (12 - (fromPeriod % 100)),
+    0
+  );
+  const contributions = monthlyContribution * months;
+  return { months, contributions, balance: balance + contributions };
+}
