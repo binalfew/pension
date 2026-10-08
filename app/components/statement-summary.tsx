@@ -1,3 +1,4 @@
+import { Wallet } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
 import type { BalanceHistoryData } from "~/lib/statement-analysis";
 import { cn, formatAmount, formatPeriod } from "~/lib/utils";
@@ -67,8 +68,11 @@ export function StatementSummary({
 
   return (
     <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-lg">{title}</CardTitle>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-lg">
+          <Wallet className="size-4 text-muted-foreground" />
+          {title}
+        </CardTitle>
       </CardHeader>
       <CardContent className="space-y-5">
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">

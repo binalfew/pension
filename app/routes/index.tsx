@@ -1,4 +1,4 @@
-import { Check, Info, Search } from "lucide-react";
+import { AlertTriangle, Check, Info, Search } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import {
   data,
@@ -10,7 +10,7 @@ import {
 import { PensionStatement } from "~/components/pension-statement";
 import { SapIdSwitcher } from "~/components/sap-id-switcher";
 import { StatusButton } from "~/components/status-button";
-import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
+import { Card, CardContent } from "~/components/ui/card";
 import { Input } from "~/components/ui/input";
 import { Label } from "~/components/ui/label";
 import Welcome from "~/components/welcome";
@@ -198,11 +198,11 @@ export default function Home({ loaderData }: Route.ComponentProps) {
       );
 
       return (
-        <div className="max-w-3xl mx-auto py-16">
+        <div className="max-w-3xl mx-auto py-8 sm:py-16">
           <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
-            <div className="px-8 py-7 border-b border-border bg-muted/30">
+            <div className="px-5 py-6 sm:px-8 sm:py-7 border-b border-border bg-muted/30">
               <div className="flex items-start gap-4">
-                <div className="flex-shrink-0 mt-0.5">
+                <div className="hidden flex-shrink-0 mt-0.5 sm:block">
                   <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
                     <Info className="w-6 h-6 text-primary" />
                   </div>
@@ -228,7 +228,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
               </div>
             </div>
 
-            <div className="px-8 py-7 space-y-6">
+            <div className="px-5 py-6 sm:px-8 sm:py-7 space-y-6">
               <div>
                 <h2 className="text-base font-semibold text-foreground mb-2">
                   Why am I seeing this?
@@ -283,11 +283,9 @@ export default function Home({ loaderData }: Route.ComponentProps) {
     if (error) {
       return (
         <div className="max-w-4xl mx-auto space-y-6">
-          <div className="p-6 bg-destructive/10 border border-destructive/20 rounded-lg">
-            <h2 className="text-lg font-semibold text-destructive mb-2">
-              Access Error
-            </h2>
-            <p className="text-destructive/80">{error}</p>
+          <div className="flex gap-3 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+            <p>{error}</p>
           </div>
         </div>
       );
@@ -298,12 +296,17 @@ export default function Home({ loaderData }: Route.ComponentProps) {
   // For admin users - always show the admin interface with search
   if (user.Role === "Admin") {
     return (
-      <div className="max-w-6xl mx-auto space-y-6">
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-semibold">Pension statement</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Look up a pensioner by SAP ID or name to see their statement,
+            balance history and monthly contributions.
+          </p>
+        </div>
+
         <Card>
-          <CardHeader>
-            <CardTitle>Search Pension Statement</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent>
             <Form
               method="GET"
               action={handler}
@@ -390,11 +393,9 @@ export default function Home({ loaderData }: Route.ComponentProps) {
 
         {/* Show error message if there's an error */}
         {error && (
-          <div className="p-6 bg-destructive/10 border border-destructive/20 rounded-lg">
-            <h2 className="text-lg font-semibold text-destructive mb-2">
-              Access Error
-            </h2>
-            <p className="text-destructive/80">{error}</p>
+          <div className="flex gap-3 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+            <p>{error}</p>
           </div>
         )}
 
@@ -424,11 +425,9 @@ export default function Home({ loaderData }: Route.ComponentProps) {
   if (error) {
     return (
       <div className="max-w-4xl mx-auto space-y-6">
-        <div className="p-6 bg-destructive/10 border border-destructive/20 rounded-lg">
-          <h2 className="text-lg font-semibold text-destructive mb-2">
-            Access Error
-          </h2>
-          <p className="text-destructive/80">{error}</p>
+        <div className="flex gap-3 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+          <p>{error}</p>
         </div>
       </div>
     );
@@ -437,7 +436,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
   // For pensioner users with pension statements
   if (statement && total && contributions && computedInterests) {
     return (
-      <div className="max-w-6xl mx-auto space-y-6">
+      <div className="space-y-6">
         <SapIdSwitcher
           summaries={sapIdSummaries}
           currentSapId={statement.SapIds[0]}

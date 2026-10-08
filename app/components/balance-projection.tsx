@@ -1,4 +1,4 @@
-import { TriangleAlert } from "lucide-react";
+import { Calculator, TriangleAlert } from "lucide-react";
 import { useState, type ComponentProps } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
 import { Input } from "~/components/ui/input";
@@ -111,8 +111,11 @@ export function BalanceProjection({
 
   return (
     <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-lg">Projected balance</CardTitle>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-lg">
+          <Calculator className="size-4 text-muted-foreground" />
+          Projected balance
+        </CardTitle>
         <p className="text-sm text-muted-foreground">
           Enter your own figures to estimate what a balance could grow to by the
           end of a chosen year.

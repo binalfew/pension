@@ -1,5 +1,6 @@
-import { BarChart3, Table2 } from "lucide-react";
-import { useState } from "react";
+import { BarChart3, LineChart, Table2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { tableBodyClass, tableHeaderClass } from "~/components/table-styles";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
 import {
   Table,
@@ -28,11 +29,11 @@ const compactAmount = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 1,
 });
 
-// Chart drawing area, in SVG units; the SVG scales to the card width
-const WIDTH = 640;
+// Chart drawing area, in SVG units. The width tracks the rendered card
+// width so one unit stays one pixel and labels keep their size on phones
+const DEFAULT_WIDTH = 640;
 const HEIGHT = 260;
 const PADDING = { top: 24, right: 32, bottom: 28, left: 56 };
-const PLOT_WIDTH = WIDTH - PADDING.left - PADDING.right;
 const PLOT_HEIGHT = HEIGHT - PADDING.top - PADDING.bottom;
 
 // Round axis bounds and a step of 1, 2, 2.5 or 5 times a power of ten, so
@@ -56,8 +57,8 @@ function niceTicks(min: number, max: number) {
 }
 
 // Month labels for short histories, otherwise one label per year (thinned
-// out so they don't overlap)
-function axisLabels(months: MonthlyBalance[]) {
+// out so they don't overlap at the available width)
+function axisLabels(months: MonthlyBalance[], plotWidth: number) {
   const labels =
     months.length <= 18
       ? months.map((month, index) => ({
@@ -69,7 +70,13 @@ function axisLabels(months: MonthlyBalance[]) {
             ? [{ index, label: String(Math.floor(month.period / 100)) }]
             : []
         );
-  const maxLabels = months.length <= 18 ? 6 : 8;
+  const maxLabels = Math.max(
+    2,
+    Math.min(
+      months.length <= 18 ? 6 : 8,
+      Math.floor(plotWidth / (months.length <= 18 ? 70 : 45))
+    )
+  );
   const step = Math.ceil(labels.length / maxLabels);
   return labels.filter((_, index) => index % step === 0);
 }
@@ -82,6 +89,21 @@ function BalanceChart({
   interestThrough: number | null;
 }) {
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  const [width, setWidth] = useState(DEFAULT_WIDTH);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const observer = new ResizeObserver(([entry]) => {
+      const measured = Math.round(entry.contentRect.width);
+      if (measured > 0) setWidth(measured);
+    });
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
+
+  const plotWidth = width - PADDING.left - PADDING.right;
 
   const values = months.flatMap((month) => [
     month.contributionsToDate,
@@ -92,7 +114,7 @@ function BalanceChart({
   const maxValue = ticks[ticks.length - 1];
 
   const x = (index: number) =>
-    PADDING.left + (PLOT_WIDTH * index) / (months.length - 1);
+    PADDING.left + (plotWidth * index) / (months.length - 1);
   const y = (value: number) =>
     PADDING.top +
     PLOT_HEIGHT -
@@ -114,9 +136,9 @@ function BalanceChart({
   // Nearest month to the pointer
   const handlePointer = (event: React.PointerEvent<SVGSVGElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
-    const svgX = ((event.clientX - rect.left) / rect.width) * WIDTH;
+    const svgX = ((event.clientX - rect.left) / rect.width) * width;
     const index = Math.round(
-      ((svgX - PADDING.left) / PLOT_WIDTH) * (months.length - 1)
+      ((svgX - PADDING.left) / plotWidth) * (months.length - 1)
     );
     setActiveIndex(Math.min(months.length - 1, Math.max(0, index)));
   };
@@ -124,11 +146,12 @@ function BalanceChart({
   const lastIndex = months.length - 1;
   const active = activeIndex !== null ? months[activeIndex] : null;
   const activeOnRight = activeIndex !== null && activeIndex > lastIndex / 2;
+  const narrow = width < 480;
 
   return (
-    <div className="relative">
+    <div ref={containerRef} className="relative">
       <svg
-        viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+        viewBox={`0 0 ${width} ${HEIGHT}`}
         className="w-full h-auto touch-pan-y select-none"
         role="img"
         aria-label="Balance at the end of each month"
@@ -140,7 +163,7 @@ function BalanceChart({
           <g key={tick}>
             <line
               x1={PADDING.left}
-              x2={WIDTH - PADDING.right}
+              x2={width - PADDING.right}
               y1={y(tick)}
               y2={y(tick)}
               className="stroke-border"
@@ -199,7 +222,7 @@ function BalanceChart({
           </g>
         )}
 
-        {axisLabels(months).map(({ index, label }) => (
+        {axisLabels(months, plotWidth).map(({ index, label }) => (
           <text
             key={index}
             x={x(index)}
@@ -249,9 +272,17 @@ function BalanceChart({
         <div
           className={cn(
             "pointer-events-none absolute top-6 w-52 rounded-md border bg-popover px-3 py-2 text-xs shadow-md",
-            activeOnRight ? "-translate-x-full -ml-3" : "ml-3"
+            !narrow && (activeOnRight ? "-translate-x-full -ml-3" : "ml-3")
           )}
-          style={{ left: `${(x(activeIndex) / WIDTH) * 100}%` }}
+          style={
+            // On narrow charts a tooltip beside the pointer would spill out of
+            // the card, so pin it to the edge away from the pointer instead
+            narrow
+              ? activeOnRight
+                ? { left: 0 }
+                : { right: 0 }
+              : { left: `${(x(activeIndex) / width) * 100}%` }
+          }
         >
           <div className="mb-1.5 font-semibold text-foreground">
             {formatPeriod(active.period)}
@@ -323,7 +354,7 @@ function AnnualTable({ rows }: { rows: AnnualSummaryRow[] }) {
 
   return (
     <Table>
-      <TableHeader>
+      <TableHeader className={tableHeaderClass}>
         <TableRow>
           <TableHead>Year</TableHead>
           <TableHead className="text-right">Employee</TableHead>
@@ -344,7 +375,7 @@ function AnnualTable({ rows }: { rows: AnnualSummaryRow[] }) {
           <TableHead className="text-right">Closing balance</TableHead>
         </TableRow>
       </TableHeader>
-      <TableBody>
+      <TableBody className={tableBodyClass}>
         {/* Most recent year first */}
         {[...rows].reverse().map((row) => (
           <TableRow key={row.year}>
@@ -412,10 +443,13 @@ export function BalanceHistory({
   }
 
   return (
-    <Card>
-      <CardHeader className="pb-2">
+    <Card className={cn(view === "table" && "overflow-hidden pb-0")}>
+      <CardHeader>
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <CardTitle className="text-lg">Balance over time</CardTitle>
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <LineChart className="size-4 text-muted-foreground" />
+            Balance over time
+          </CardTitle>
           <ViewToggle view={view} onChange={setView} />
         </div>
       </CardHeader>

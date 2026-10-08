@@ -1,5 +1,12 @@
-import { ChevronDown, ChevronLeft, ChevronRight, X } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Rows3,
+  X,
+} from "lucide-react";
 import { Fragment, useMemo, useState } from "react";
+import { tableBodyClass, tableHeaderClass } from "~/components/table-styles";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
 import {
@@ -52,7 +59,7 @@ function FilterSelect({
         aria-label={label}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="h-9 w-full min-w-28 appearance-none rounded-md border border-input bg-background pl-3 pr-9 text-sm text-foreground shadow-xs outline-none cursor-pointer focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
+        className="h-9 w-full min-w-24 appearance-none rounded-md border border-input bg-background pl-3 pr-9 text-sm text-foreground shadow-xs outline-none cursor-pointer focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
       >
         {children}
       </select>
@@ -183,8 +190,8 @@ export function TransactionsTable({
 
   return (
     <>
-      <div className="flex flex-wrap items-center gap-x-10 gap-y-4 rounded-lg border bg-card px-6 py-4 shadow-sm">
-        <div className="flex flex-1 basis-72 items-center gap-3">
+      <div className="flex flex-wrap items-center gap-x-10 gap-y-4 rounded-xl border bg-card px-4 py-4 shadow-sm sm:px-6">
+        <div className="flex flex-1 basis-60 items-center gap-2 sm:gap-3">
           <span className="text-sm font-medium text-muted-foreground">
             Period
           </span>
@@ -231,10 +238,13 @@ export function TransactionsTable({
         )}
       </div>
 
-      <Card>
-        <CardHeader className="pb-4">
+      <Card className="overflow-hidden pb-0">
+        <CardHeader>
           <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-            <CardTitle className="text-lg">Monthly Transactions</CardTitle>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Rows3 className="size-4 text-muted-foreground" />
+              Monthly transactions
+            </CardTitle>
             <span className="text-sm text-muted-foreground">
               {filtered.length} {filtered.length === 1 ? "month" : "months"} ·
               total{" "}
@@ -247,11 +257,11 @@ export function TransactionsTable({
             Select a month to see the individual payments.
           </p>
         </CardHeader>
-        <CardContent className="p-0">
+        <CardContent className="border-t p-0">
           <Table>
-            <TableHeader>
+            <TableHeader className={tableHeaderClass}>
               <TableRow>
-                <TableHead className="w-8" />
+                <TableHead className="w-8 pr-0!" />
                 {showSapId && <TableHead>SAP ID</TableHead>}
                 <TableHead>Month</TableHead>
                 <TableHead className="text-right">Employee</TableHead>
@@ -271,7 +281,7 @@ export function TransactionsTable({
                 <TableHead className="text-right">Total</TableHead>
               </TableRow>
             </TableHeader>
-            <TableBody>
+            <TableBody className={tableBodyClass}>
               {pageRows.length === 0 && (
                 <TableRow>
                   <TableCell
@@ -295,7 +305,7 @@ export function TransactionsTable({
                         isExpanded && "bg-muted/40 hover:bg-muted/40"
                       )}
                     >
-                      <TableCell className="w-8 pr-0">
+                      <TableCell className="w-8 pr-0!">
                         <ChevronRight
                           className={cn(
                             "size-4 text-muted-foreground transition-transform",

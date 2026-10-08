@@ -3,7 +3,9 @@ import { BalanceHistory } from "~/components/balance-history";
 import { BalanceProjection } from "~/components/balance-projection";
 import { ContributionGaps } from "~/components/contribution-gaps";
 import { StatementSummary } from "~/components/statement-summary";
+import { iconTone } from "~/components/table-styles";
 import { TransactionsTable } from "~/components/transactions-table";
+import { Button } from "~/components/ui/button";
 import {
   findContributionGaps,
   getAnnualSummary,
@@ -39,12 +41,12 @@ export function PensionStatement({
 
   return (
     <>
-      <div className="flex flex-wrap items-center justify-between gap-4 p-4 bg-muted/30 rounded-lg border border-border shadow-sm">
-        <div className="flex items-center gap-4">
-          <div className="flex-shrink-0">
-            <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center">
-              <User className="w-6 h-6 text-primary" />
-            </div>
+      <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border bg-card p-5 shadow-sm">
+        <div className="flex min-w-0 items-center gap-4">
+          <div
+            className={`flex size-11 shrink-0 items-center justify-center rounded-lg ${iconTone.success}`}
+          >
+            <User className="size-5" />
           </div>
           <div className="min-w-0">
             <h1 className="text-xl font-semibold text-foreground truncate">
@@ -75,17 +77,16 @@ export function PensionStatement({
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 flex-shrink-0">
+        <Button asChild variant="outline" size="sm">
           <a
             href={`/api/pdf?${downloadQuery}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-2 px-3 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors text-sm font-medium"
           >
-            <Download className="w-4 h-4" />
+            <Download />
             Download PDF
           </a>
-        </div>
+        </Button>
       </div>
 
       <ContributionGaps
