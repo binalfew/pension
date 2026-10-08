@@ -22,7 +22,7 @@ import type { Route } from "./+types/index";
 
 export function meta({}: Route.MetaArgs) {
   return [
-    { title: "Pension Management System" },
+    { title: "AU Pension" },
     {
       name: "description",
       content:

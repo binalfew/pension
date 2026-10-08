@@ -14,7 +14,7 @@ import { getDataQualityReport, resolveUserByEmail } from "~/lib/db.server";
 import type { Route } from "./+types/data-quality";
 
 export function meta({}: Route.MetaArgs) {
-  return [{ title: "Data Quality | Pension Management System" }];
+  return [{ title: "Data Quality | AU Pension" }];
 }
 
 export async function loader({ request }: Route.LoaderArgs) {

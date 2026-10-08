@@ -15,6 +15,8 @@ import { getUserEmail } from "./lib/auth.server";
 import { resolveUserByEmail } from "./lib/db.server";
 
 export const links: Route.LinksFunction = () => [
+  { rel: "icon", href: "/favicon.svg", type: "image/svg+xml" },
+  { rel: "icon", href: "/favicon.ico", sizes: "any" },
   { rel: "preconnect", href: "https://fonts.googleapis.com" },
   {
     rel: "preconnect",

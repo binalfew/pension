@@ -22,7 +22,7 @@ import { resolveUserByEmail } from "~/lib/db.server";
 import type { Route } from "./+types/contributions-upload";
 
 export function meta({}: Route.MetaArgs) {
-  return [{ title: "Upload contributions | Pension Management System" }];
+  return [{ title: "Upload contributions | AU Pension" }];
 }
 
 // Only admins (the pension office) can upload contributions
