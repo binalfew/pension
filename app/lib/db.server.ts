@@ -5,6 +5,7 @@ import type { ContributionView } from "~/types/contribution-view";
 import type { SapIdSummary } from "~/types/sap-id-summary";
 import type { Account, Statement } from "~/types/statement";
 import type { AdminUser, User } from "~/types/user";
+import { CHART_MONTHS, type SystemOverview } from "./overview";
 import type { NearMatch, SapIdCheck, SignInCheck } from "./sign-in-check";
 import { Prisma } from "@prisma/client";
 import prisma from "./prisma";
@@ -754,4 +755,66 @@ async function findNearMatches(email: string): Promise<NearMatch[]> {
       CASE Reason WHEN 'spaces' THEN 0 WHEN 'email' THEN 1 ELSE 2 END,
       Email, SAPID
   `;
+}
+
+// System-wide counts, payroll months loaded and how far interest has been
+// computed, for the overview page
+export async function getSystemOverview(): Promise<SystemOverview> {
+  const [[totals], payrollMonths, [interest]] = await Promise.all([
+    prisma.$queryRaw<
+      Array<{
+        pensioners: number;
+        pensionersWithEmail: number;
+        admins: number;
+        contributionRows: number;
+        contributionTotal: number | null;
+        interestTotal: number | null;
+        latestPayrollMonth: number | null;
+      }>
+    >`
+      SELECT
+        (SELECT COUNT(DISTINCT SAPID) FROM users WHERE SAPID IS NOT NULL) AS pensioners,
+        (SELECT COUNT(DISTINCT SAPID) FROM users
+          WHERE SAPID IS NOT NULL AND LTRIM(RTRIM(Email)) <> '') AS pensionersWithEmail,
+        (SELECT COUNT(*) FROM adminUsers) AS admins,
+        (SELECT COUNT(*) FROM contributions) AS contributionRows,
+        (SELECT SUM(Amount) FROM contributions) AS contributionTotal,
+        (SELECT SUM(Interest) FROM ComputedInterests) AS interestTotal,
+        (SELECT MAX(InPeriod) FROM contributions WHERE InPeriod <= ${MAX_PERIOD}) AS latestPayrollMonth
+    `,
+    prisma.$queryRaw<
+      Array<{ period: number; entries: number; people: number; total: number }>
+    >`
+      SELECT TOP (${CHART_MONTHS}) InPeriod AS period, COUNT(*) AS entries,
+        COUNT(DISTINCT SAPID) AS people, SUM(Amount) AS total
+      FROM contributions
+      WHERE InPeriod <= ${MAX_PERIOD}
+      GROUP BY InPeriod
+      ORDER BY InPeriod DESC
+    `,
+    prisma.$queryRaw<Array<{ period: number; people: number }>>`
+      SELECT TOP 1 YearMonth AS period, COUNT(DISTINCT SAPID) AS people
+      FROM ComputedInterests
+      GROUP BY YearMonth
+      ORDER BY YearMonth DESC
+    `,
+  ]);
+
+  return {
+    pensioners: Number(totals.pensioners),
+    pensionersWithEmail: Number(totals.pensionersWithEmail),
+    admins: Number(totals.admins),
+    contributionRows: Number(totals.contributionRows),
+    contributionTotal: Number(totals.contributionTotal ?? 0),
+    interestTotal: Number(totals.interestTotal ?? 0),
+    latestPayrollMonth: totals.latestPayrollMonth,
+    payrollMonths: payrollMonths.map((month) => ({
+      period: month.period,
+      entries: Number(month.entries),
+      people: Number(month.people),
+      total: Number(month.total),
+    })),
+    latestInterestMonth: interest?.period ?? null,
+    latestInterestPeople: Number(interest?.people ?? 0),
+  };
 }

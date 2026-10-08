@@ -36,7 +36,7 @@ export function formatUploadTime(iso: string) {
   return dateTimeFormat.format(new Date(iso));
 }
 
-const STATUS: Record<UploadHistoryStatus, { label: string; tone: BadgeTone }> =
+export const STATUS: Record<UploadHistoryStatus, { label: string; tone: BadgeTone }> =
   {
     running: { label: "In progress", tone: "info" },
     succeeded: { label: "Done", tone: "success" },

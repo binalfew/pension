@@ -7,6 +7,7 @@ import { Logo } from "./logo";
 import { Separator } from "./ui/separator";
 
 const navItems = [
+  { to: "/overview", label: "Overview" },
   { to: "/", label: "Statement" },
   { to: "/contributions-upload", label: "Upload" },
   { to: "/data-quality", label: "Quality" },
@@ -61,7 +62,7 @@ export default function Navigation({
                 <Form
                   action="/logout"
                   method="POST"
-                  className="hidden min-w-0 sm:block"
+                  className="hidden min-w-0 md:block"
                 >
                   <div className="flex h-5 items-center space-x-4 text-sm">
                     {isAdmin && (
@@ -104,7 +105,7 @@ export default function Navigation({
                   aria-expanded={menuOpen}
                   aria-controls="mobile-menu"
                   onClick={() => setMenuOpen((open) => !open)}
-                  className="-mr-2 flex size-9 cursor-pointer items-center justify-center rounded-md text-primary-foreground/80 transition-colors hover:bg-primary-foreground/10 hover:text-primary-foreground sm:hidden"
+                  className="-mr-2 flex size-9 cursor-pointer items-center justify-center rounded-md text-primary-foreground/80 transition-colors hover:bg-primary-foreground/10 hover:text-primary-foreground md:hidden"
                 >
                   {menuOpen ? (
                     <X className="size-5" />
@@ -130,7 +131,7 @@ export default function Navigation({
         {user && menuOpen && (
           <div
             id="mobile-menu"
-            className="space-y-1 border-t border-primary-foreground/20 px-3 py-3 text-sm sm:hidden"
+            className="space-y-1 border-t border-primary-foreground/20 px-3 py-3 text-sm md:hidden"
           >
             <p className="truncate px-2 pb-2 text-primary-foreground/70">
               Signed in as {user.name}
