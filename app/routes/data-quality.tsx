@@ -11,6 +11,7 @@ import {
   UserCog,
   type LucideIcon,
 } from "lucide-react";
+import { useState } from "react";
 import { Link, redirect } from "react-router";
 import {
   badgeTone,
@@ -72,10 +73,7 @@ function SapIdLink({ sapId }: { sapId: number | null }) {
 // person an email
 function AddUserLink({ to, label }: { to: string; label: string }) {
   return (
-    <Link
-      to={to}
-      className="whitespace-nowrap text-primary hover:underline"
-    >
+    <Link to={to} className="whitespace-nowrap text-primary hover:underline">
       {label}
     </Link>
   );
@@ -170,12 +168,16 @@ function SummaryTile({
   );
 }
 
-function Section({
+// Rows a section shows until the admin asks for all of them: some lists run
+// to over a thousand, which made the page slow to open. The CSV has them all
+const SHOWN_ROWS = 50;
+
+function Section<Row>({
   id,
   icon: Icon,
   title,
   description,
-  count,
+  rows,
   onDownload,
   children,
 }: {
@@ -183,10 +185,14 @@ function Section({
   icon: LucideIcon;
   title: string;
   description: string;
-  count: number;
+  rows: Row[];
   onDownload: () => void;
-  children: React.ReactNode;
+  // Renders the table for the rows being shown
+  children: (shown: Row[]) => React.ReactNode;
 }) {
+  const [showAll, setShowAll] = useState(false);
+  const count = rows.length;
+  const shown = showAll ? rows : rows.slice(0, SHOWN_ROWS);
   return (
     <Card
       id={id}
@@ -220,7 +226,26 @@ function Section({
             No issues found.
           </p>
         ) : (
-          <div className={scrollingTableClass}>{children}</div>
+          <>
+            <div className={scrollingTableClass}>{children(shown)}</div>
+            {count > SHOWN_ROWS && (
+              <div className="flex items-center justify-between gap-3 border-t px-4 py-2 text-sm text-muted-foreground">
+                <span>
+                  Showing {shown.length.toLocaleString()} of{" "}
+                  {count.toLocaleString()}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowAll(!showAll)}
+                >
+                  {showAll
+                    ? `Show first ${SHOWN_ROWS}`
+                    : `Show all ${count.toLocaleString()}`}
+                </Button>
+              </div>
+            )}
+          </>
         )}
       </CardContent>
     </Card>
@@ -316,7 +341,7 @@ export default function DataQuality({ loaderData }: Route.ComponentProps) {
         icon={Banknote}
         title="Contributions with no pensioner"
         description={`These SAP IDs have contributions but no row in the users table, so $${formatAmount(orphanTotal)} appears on no one's statement. Usually new staff whose payroll was uploaded before they were registered. Add them one at a time with Add user, or fill in the CSV's names and emails and upload it on Users.`}
-        count={orphanContributions.length}
+        rows={orphanContributions}
         onDownload={() =>
           downloadCsv(
             "contributions-without-pensioner.csv",
@@ -337,39 +362,44 @@ export default function DataQuality({ loaderData }: Route.ComponentProps) {
           )
         }
       >
-        <Table>
-          <TableHeader className={stickyTableHeaderClass}>
-            <TableRow>
-              <TableHead className="w-32">SAP ID</TableHead>
-              <TableHead>Office</TableHead>
-              <TableHead>Period</TableHead>
-              <TableHead className="w-36 text-right">Contributions</TableHead>
-              <TableHead className="w-36 text-right">Total</TableHead>
-              <TableHead className="w-28" />
-            </TableRow>
-          </TableHeader>
-          <TableBody className={tableBodyClass}>
-            {orphanContributions.map((row) => (
-              <TableRow key={row.SAPID}>
-                {/* No statement to link to without a users row */}
-                <TableCell className="font-medium">{row.SAPID}</TableCell>
-                <TableCell>{row.Office ?? "—"}</TableCell>
-                <TableCell className="whitespace-nowrap">
-                  {periodRange(row.FirstPeriod, row.LastPeriod)}
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {row.Contributions.toLocaleString()}
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  ${formatAmount(row.Total)}
-                </TableCell>
-                <TableCell className="text-right">
-                  <AddUserLink to={`/users/new?sapId=${row.SAPID}`} label="Add user" />
-                </TableCell>
+        {(shown) => (
+          <Table>
+            <TableHeader className={stickyTableHeaderClass}>
+              <TableRow>
+                <TableHead className="w-32">SAP ID</TableHead>
+                <TableHead>Office</TableHead>
+                <TableHead>Period</TableHead>
+                <TableHead className="w-36 text-right">Contributions</TableHead>
+                <TableHead className="w-36 text-right">Total</TableHead>
+                <TableHead className="w-28" />
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody className={tableBodyClass}>
+              {shown.map((row) => (
+                <TableRow key={row.SAPID}>
+                  {/* No statement to link to without a users row */}
+                  <TableCell className="font-medium">{row.SAPID}</TableCell>
+                  <TableCell>{row.Office ?? "—"}</TableCell>
+                  <TableCell className="whitespace-nowrap">
+                    {periodRange(row.FirstPeriod, row.LastPeriod)}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {row.Contributions.toLocaleString()}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    ${formatAmount(row.Total)}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <AddUserLink
+                      to={`/users/new?sapId=${row.SAPID}`}
+                      label="Add user"
+                    />
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
       </Section>
 
       <Section
@@ -377,7 +407,7 @@ export default function DataQuality({ loaderData }: Route.ComponentProps) {
         icon={MailX}
         title="Pensioners without an email"
         description="These pensioners have contributions but no email address, so they cannot sign in to see their statement. Add an email on each one, or fill in the CSV's Email column and upload it on Users."
-        count={missingEmail.length}
+        rows={missingEmail}
         onDownload={() =>
           downloadCsv(
             "pensioners-without-email.csv",
@@ -397,35 +427,37 @@ export default function DataQuality({ loaderData }: Route.ComponentProps) {
           )
         }
       >
-        <Table>
-          <TableHeader className={stickyTableHeaderClass}>
-            <TableRow>
-              <TableHead className="w-32">SAP ID</TableHead>
-              <TableHead>Name</TableHead>
-              <TableHead className="w-36 text-right">Contributions</TableHead>
-              <TableHead className="w-28" />
-            </TableRow>
-          </TableHeader>
-          <TableBody className={tableBodyClass}>
-            {missingEmail.map((row) => (
-              <TableRow key={row.SAPID}>
-                <TableCell>
-                  <SapIdLink sapId={row.SAPID} />
-                </TableCell>
-                <TableCell>{row.FullName?.trim() || "—"}</TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {row.ContributionCount.toLocaleString()}
-                </TableCell>
-                <TableCell className="text-right">
-                  <AddUserLink
-                    to={personPath({ sapId: row.SAPID })}
-                    label="Add email"
-                  />
-                </TableCell>
+        {(shown) => (
+          <Table>
+            <TableHeader className={stickyTableHeaderClass}>
+              <TableRow>
+                <TableHead className="w-32">SAP ID</TableHead>
+                <TableHead>Name</TableHead>
+                <TableHead className="w-36 text-right">Contributions</TableHead>
+                <TableHead className="w-28" />
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody className={tableBodyClass}>
+              {shown.map((row) => (
+                <TableRow key={row.SAPID}>
+                  <TableCell>
+                    <SapIdLink sapId={row.SAPID} />
+                  </TableCell>
+                  <TableCell>{row.FullName?.trim() || "—"}</TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {row.ContributionCount.toLocaleString()}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <AddUserLink
+                      to={personPath({ sapId: row.SAPID })}
+                      label="Add email"
+                    />
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
       </Section>
 
       <Section
@@ -433,7 +465,7 @@ export default function DataQuality({ loaderData }: Route.ComponentProps) {
         icon={Copy}
         title="Duplicate SAP IDs"
         description="These SAP IDs have more than one row in the users table. Keep one row per SAP ID, the one with the correct email."
-        count={duplicateSapIds.length}
+        rows={duplicateSapIds}
         onDownload={() =>
           downloadCsv(
             "duplicate-sap-ids.csv",
@@ -447,34 +479,36 @@ export default function DataQuality({ loaderData }: Route.ComponentProps) {
           )
         }
       >
-        <Table>
-          <TableHeader className={stickyTableHeaderClass}>
-            <TableRow>
-              <TableHead className="w-32">SAP ID</TableHead>
-              <TableHead className="w-24 text-right">Rows</TableHead>
-              <TableHead>Names</TableHead>
-              <TableHead>Emails</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody className={cn(tableBodyClass, "[&_td]:align-top")}>
-            {duplicateSapIds.map((row) => (
-              <TableRow key={row.SAPID}>
-                <TableCell>
-                  <SapIdLink sapId={row.SAPID} />
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {row.Rows}
-                </TableCell>
-                <TableCell className="whitespace-normal">
-                  <StackedValues values={row.FullNames} />
-                </TableCell>
-                <TableCell className="whitespace-normal">
-                  <StackedValues values={row.Emails} />
-                </TableCell>
+        {(shown) => (
+          <Table>
+            <TableHeader className={stickyTableHeaderClass}>
+              <TableRow>
+                <TableHead className="w-32">SAP ID</TableHead>
+                <TableHead className="w-24 text-right">Rows</TableHead>
+                <TableHead>Names</TableHead>
+                <TableHead>Emails</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody className={cn(tableBodyClass, "[&_td]:align-top")}>
+              {shown.map((row) => (
+                <TableRow key={row.SAPID}>
+                  <TableCell>
+                    <SapIdLink sapId={row.SAPID} />
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {row.Rows}
+                  </TableCell>
+                  <TableCell className="whitespace-normal">
+                    <StackedValues values={row.FullNames} />
+                  </TableCell>
+                  <TableCell className="whitespace-normal">
+                    <StackedValues values={row.Emails} />
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
       </Section>
 
       <Section
@@ -482,7 +516,7 @@ export default function DataQuality({ loaderData }: Route.ComponentProps) {
         icon={Tag}
         title="Unknown contribution types"
         description="These contributions use a type ID that isn't in the contribution types table, so they are left out of every balance. Add the type, or correct the contributions."
-        count={unknownTypes.length}
+        rows={unknownTypes}
         onDownload={() =>
           downloadCsv(
             "unknown-contribution-types.csv",
@@ -496,34 +530,36 @@ export default function DataQuality({ loaderData }: Route.ComponentProps) {
           )
         }
       >
-        <Table>
-          <TableHeader className={stickyTableHeaderClass}>
-            <TableRow>
-              <TableHead>Type ID</TableHead>
-              <TableHead className="text-right">Contributions</TableHead>
-              <TableHead className="text-right">SAP IDs</TableHead>
-              <TableHead className="text-right">Total</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody className={tableBodyClass}>
-            {unknownTypes.map((row) => (
-              <TableRow key={row.ContributionTypeID ?? "none"}>
-                <TableCell className="font-medium">
-                  {row.ContributionTypeID ?? "None"}
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {row.Contributions.toLocaleString()}
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {row.SapIds.toLocaleString()}
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  ${formatAmount(row.Total)}
-                </TableCell>
+        {(shown) => (
+          <Table>
+            <TableHeader className={stickyTableHeaderClass}>
+              <TableRow>
+                <TableHead>Type ID</TableHead>
+                <TableHead className="text-right">Contributions</TableHead>
+                <TableHead className="text-right">SAP IDs</TableHead>
+                <TableHead className="text-right">Total</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody className={tableBodyClass}>
+              {shown.map((row) => (
+                <TableRow key={row.ContributionTypeID ?? "none"}>
+                  <TableCell className="font-medium">
+                    {row.ContributionTypeID ?? "None"}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {row.Contributions.toLocaleString()}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {row.SapIds.toLocaleString()}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    ${formatAmount(row.Total)}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
       </Section>
 
       <Section
@@ -531,7 +567,7 @@ export default function DataQuality({ loaderData }: Route.ComponentProps) {
         icon={FileX}
         title="Pensioners with no contributions"
         description="These pensioners have a SAP ID but no contributions under it, so they see an empty statement. Check the SAP ID is right; new staff may simply not have been paid yet."
-        count={noContributions.length}
+        rows={noContributions}
         onDownload={() =>
           downloadCsv(
             "pensioners-without-contributions.csv",
@@ -544,28 +580,30 @@ export default function DataQuality({ loaderData }: Route.ComponentProps) {
           )
         }
       >
-        <Table>
-          <TableHeader className={stickyTableHeaderClass}>
-            <TableRow>
-              <TableHead className="w-32">SAP ID</TableHead>
-              <TableHead>Name</TableHead>
-              <TableHead>Email</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody className={tableBodyClass}>
-            {noContributions.map((row) => (
-              <TableRow key={row.SAPID}>
-                <TableCell>
-                  <SapIdLink sapId={row.SAPID} />
-                </TableCell>
-                <TableCell>{row.FullName?.trim() || "—"}</TableCell>
-                <TableCell>
-                  <EmailCheckLink email={row.Email} />
-                </TableCell>
+        {(shown) => (
+          <Table>
+            <TableHeader className={stickyTableHeaderClass}>
+              <TableRow>
+                <TableHead className="w-32">SAP ID</TableHead>
+                <TableHead>Name</TableHead>
+                <TableHead>Email</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody className={tableBodyClass}>
+              {shown.map((row) => (
+                <TableRow key={row.SAPID}>
+                  <TableCell>
+                    <SapIdLink sapId={row.SAPID} />
+                  </TableCell>
+                  <TableCell>{row.FullName?.trim() || "—"}</TableCell>
+                  <TableCell>
+                    <EmailCheckLink email={row.Email} />
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
       </Section>
 
       <Section
@@ -573,7 +611,7 @@ export default function DataQuality({ loaderData }: Route.ComponentProps) {
         icon={Hash}
         title="Records without a SAP ID"
         description="These pensioner records have no SAP ID, so the person sees “No pension data available”. Set the SAP ID on each row."
-        count={missingSapId.length}
+        rows={missingSapId}
         onDownload={() =>
           downloadCsv(
             "records-without-sap-id.csv",
@@ -586,26 +624,28 @@ export default function DataQuality({ loaderData }: Route.ComponentProps) {
           )
         }
       >
-        <Table>
-          <TableHeader className={stickyTableHeaderClass}>
-            <TableRow>
-              <TableHead className="w-32">Pension ID</TableHead>
-              <TableHead>Name</TableHead>
-              <TableHead>Email</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody className={tableBodyClass}>
-            {missingSapId.map((row, index) => (
-              <TableRow key={`${row.PensionID}-${row.Email}-${index}`}>
-                <TableCell>{row.PensionID ?? "—"}</TableCell>
-                <TableCell>{row.FullName?.trim() || "—"}</TableCell>
-                <TableCell>
-                  <EmailCheckLink email={row.Email} />
-                </TableCell>
+        {(shown) => (
+          <Table>
+            <TableHeader className={stickyTableHeaderClass}>
+              <TableRow>
+                <TableHead className="w-32">Pension ID</TableHead>
+                <TableHead>Name</TableHead>
+                <TableHead>Email</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody className={tableBodyClass}>
+              {shown.map((row, index) => (
+                <TableRow key={`${row.PensionID}-${row.Email}-${index}`}>
+                  <TableCell>{row.PensionID ?? "—"}</TableCell>
+                  <TableCell>{row.FullName?.trim() || "—"}</TableCell>
+                  <TableCell>
+                    <EmailCheckLink email={row.Email} />
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
       </Section>
 
       <Section
@@ -613,7 +653,7 @@ export default function DataQuality({ loaderData }: Route.ComponentProps) {
         icon={Percent}
         title="Interest with no pensioner"
         description="Interest has been computed for these SAP IDs, but they have no row in the users table, so it appears on no one's statement."
-        count={orphanInterest.length}
+        rows={orphanInterest}
         onDownload={() =>
           downloadCsv(
             "interest-without-pensioner.csv",
@@ -622,28 +662,30 @@ export default function DataQuality({ loaderData }: Route.ComponentProps) {
           )
         }
       >
-        <Table>
-          <TableHeader className={stickyTableHeaderClass}>
-            <TableRow>
-              <TableHead className="w-32">SAP ID</TableHead>
-              <TableHead className="text-right">Months</TableHead>
-              <TableHead className="text-right">Total interest</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody className={tableBodyClass}>
-            {orphanInterest.map((row) => (
-              <TableRow key={row.SAPID}>
-                <TableCell className="font-medium">{row.SAPID}</TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {row.Months.toLocaleString()}
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  ${formatAmount(row.Total)}
-                </TableCell>
+        {(shown) => (
+          <Table>
+            <TableHeader className={stickyTableHeaderClass}>
+              <TableRow>
+                <TableHead className="w-32">SAP ID</TableHead>
+                <TableHead className="text-right">Months</TableHead>
+                <TableHead className="text-right">Total interest</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody className={tableBodyClass}>
+              {shown.map((row) => (
+                <TableRow key={row.SAPID}>
+                  <TableCell className="font-medium">{row.SAPID}</TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {row.Months.toLocaleString()}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    ${formatAmount(row.Total)}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
       </Section>
 
       <Section
@@ -651,7 +693,7 @@ export default function DataQuality({ loaderData }: Route.ComponentProps) {
         icon={UserCog}
         title="Admins who are also pensioners"
         description="These emails are in both the admin and pensioner tables. They sign in as admins and see their own statement only by searching for it. Fine if intended."
-        count={adminPensioners.length}
+        rows={adminPensioners}
         onDownload={() =>
           downloadCsv(
             "admins-who-are-pensioners.csv",
@@ -664,38 +706,40 @@ export default function DataQuality({ loaderData }: Route.ComponentProps) {
           )
         }
       >
-        <Table>
-          <TableHeader className={stickyTableHeaderClass}>
-            <TableRow>
-              <TableHead>Email</TableHead>
-              <TableHead>Name</TableHead>
-              <TableHead>SAP IDs</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody className={cn(tableBodyClass, "[&_td]:align-top")}>
-            {adminPensioners.map((row) => (
-              <TableRow key={row.Email}>
-                <TableCell>
-                  <EmailCheckLink email={row.Email} />
-                </TableCell>
-                <TableCell>{row.FullName ?? "—"}</TableCell>
-                <TableCell>
-                  {row.SapIds ? (
-                    <ul className="space-y-0.5">
-                      {row.SapIds.split(" | ").map((sapId) => (
-                        <li key={sapId}>
-                          <SapIdLink sapId={Number(sapId)} />
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    "—"
-                  )}
-                </TableCell>
+        {(shown) => (
+          <Table>
+            <TableHeader className={stickyTableHeaderClass}>
+              <TableRow>
+                <TableHead>Email</TableHead>
+                <TableHead>Name</TableHead>
+                <TableHead>SAP IDs</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody className={cn(tableBodyClass, "[&_td]:align-top")}>
+              {shown.map((row) => (
+                <TableRow key={row.Email}>
+                  <TableCell>
+                    <EmailCheckLink email={row.Email} />
+                  </TableCell>
+                  <TableCell>{row.FullName ?? "—"}</TableCell>
+                  <TableCell>
+                    {row.SapIds ? (
+                      <ul className="space-y-0.5">
+                        {row.SapIds.split(" | ").map((sapId) => (
+                          <li key={sapId}>
+                            <SapIdLink sapId={Number(sapId)} />
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      "—"
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
       </Section>
     </div>
   );
