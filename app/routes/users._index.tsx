@@ -1,4 +1,11 @@
-import { CheckCircle2, Pencil, Search, Trash2, UserPlus } from "lucide-react";
+import {
+  CheckCircle2,
+  Pencil,
+  Search,
+  Trash2,
+  Upload,
+  UserPlus,
+} from "lucide-react";
 import { Form, Link, useNavigation } from "react-router";
 import { DeleteUserDialog } from "~/components/delete-user";
 import { StatusButton } from "~/components/status-button";
@@ -104,12 +111,20 @@ export default function Users({ loaderData }: Route.ComponentProps) {
             email and sees the statements of all their SAP IDs.
           </p>
         </div>
-        <Button asChild className="self-start">
-          <Link to="/users/new">
-            <UserPlus />
-            Add user
-          </Link>
-        </Button>
+        <div className="flex gap-2 self-start">
+          <Button asChild variant="outline">
+            <Link to="/users/upload">
+              <Upload />
+              Upload
+            </Link>
+          </Button>
+          <Button asChild>
+            <Link to="/users/new">
+              <UserPlus />
+              Add user
+            </Link>
+          </Button>
+        </div>
       </div>
 
       {notice && (

@@ -34,6 +34,7 @@ import { getUserEmail } from "~/lib/auth.server";
 import { downloadCsv } from "~/lib/csv";
 import { getDataQualityReport, resolveUserByEmail } from "~/lib/db.server";
 import { personPath } from "~/lib/user-links";
+import { USER_UPLOAD_COLUMNS } from "~/lib/user-upload";
 import { cn, formatAmount, formatPeriod } from "~/lib/utils";
 import type { Route } from "./+types/data-quality";
 
@@ -314,12 +315,18 @@ export default function DataQuality({ loaderData }: Route.ComponentProps) {
         id="orphan-contributions"
         icon={Banknote}
         title="Contributions with no pensioner"
-        description={`These SAP IDs have contributions but no row in the users table, so $${formatAmount(orphanTotal)} appears on no one's statement. Usually new staff whose payroll was uploaded before they were registered. Add them one at a time with Add user, or fill in the CSV, which has the users table columns.`}
+        description={`These SAP IDs have contributions but no row in the users table, so $${formatAmount(orphanTotal)} appears on no one's statement. Usually new staff whose payroll was uploaded before they were registered. Add them one at a time with Add user, or fill in the CSV's names and emails and upload it on Users.`}
         count={orphanContributions.length}
         onDownload={() =>
           downloadCsv(
             "contributions-without-pensioner.csv",
-            ["SAPID", "PensionID", "FullName", "Email", "Office"],
+            [
+              USER_UPLOAD_COLUMNS.sapId,
+              "PensionID",
+              USER_UPLOAD_COLUMNS.fullName,
+              USER_UPLOAD_COLUMNS.email,
+              "Office",
+            ],
             orphanContributions.map((row) => [
               row.SAPID,
               "",
@@ -369,15 +376,22 @@ export default function DataQuality({ loaderData }: Route.ComponentProps) {
         id="missing-email"
         icon={MailX}
         title="Pensioners without an email"
-        description="These pensioners have contributions but no email address, so they cannot sign in to see their statement."
+        description="These pensioners have contributions but no email address, so they cannot sign in to see their statement. Add an email on each one, or fill in the CSV's Email column and upload it on Users."
         count={missingEmail.length}
         onDownload={() =>
           downloadCsv(
             "pensioners-without-email.csv",
-            ["SAPID", "FullName", "Contributions"],
+            // Email left empty to fill in and upload on Users
+            [
+              USER_UPLOAD_COLUMNS.sapId,
+              USER_UPLOAD_COLUMNS.fullName,
+              USER_UPLOAD_COLUMNS.email,
+              "Contributions",
+            ],
             missingEmail.map((row) => [
               row.SAPID,
               row.FullName?.trim() || null,
+              "",
               row.ContributionCount,
             ])
           )

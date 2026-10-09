@@ -82,10 +82,18 @@ export type UserFields = {
 export function parsePersonDetails(
   formData: FormData
 ): { fields: Omit<UserFields, "sapId"> } | { error: string } {
-  const fullName = String(formData.get("fullName") ?? "")
+  return personDetailsFrom(formData.get("fullName"), formData.get("email"));
+}
+
+// A name and email, from a form or an uploaded file, or what's wrong with them
+export function personDetailsFrom(
+  rawName: unknown,
+  rawEmail: unknown
+): { fields: Omit<UserFields, "sapId"> } | { error: string } {
+  const fullName = String(rawName ?? "")
     .trim()
     .replace(/\s+/g, " ");
-  const email = normaliseEmail(formData.get("email"));
+  const email = normaliseEmail(rawEmail);
 
   if (!fullName) {
     return { error: "Enter the person's full name." };
@@ -461,18 +469,23 @@ export async function getSapIdRecord(sapId: number): Promise<SapIdRecord> {
 
 type Transaction = Prisma.TransactionClient;
 
-async function rejectAdminEmail(tx: Transaction, email: string | null) {
+async function isAdminEmail(tx: Transaction, email: string | null) {
   if (!email) {
-    return;
+    return false;
   }
   const [admin] = await tx.$queryRaw<Array<{ ID: number }>>`
     SELECT TOP 1 ID FROM adminUsers
     WHERE LOWER(LTRIM(RTRIM(Email))) = ${email}
   `;
-  if (admin) {
-    throw new UserChangeRejectedError(
-      `${email} is an admin email. Admins sign in to the admin pages and never see a statement, so it can't be a pensioner's email.`
-    );
+  return Boolean(admin);
+}
+
+const adminEmailMessage = (email: string) =>
+  `${email} is an admin email. Admins sign in to the admin pages and never see a statement, so it can't be a pensioner's email.`;
+
+async function rejectAdminEmail(tx: Transaction, email: string | null) {
+  if (email && (await isAdminEmail(tx, email))) {
+    throw new UserChangeRejectedError(adminEmailMessage(email));
   }
 }
 
@@ -505,6 +518,64 @@ function lockSapId(tx: Transaction, sapId: number) {
   `;
 }
 
+// A users row of the SAP ID being added, email trimmed and lower-cased (null
+// when blank)
+export type ExistingSapIdRow = {
+  fullName: string | null;
+  email: string | null;
+};
+
+// Why a SAP ID can't be added with an email, given its users rows. These are
+// the add rules for both the Add user form, which refuses on any of them, and
+// the upload, which skips rows that are already there
+export type AddBlocker =
+  | { reason: "sameEmail" }
+  | { reason: "otherEmail"; emails: string[] }
+  | { reason: "noEmailGiven" }
+  | { reason: "adminEmail" };
+
+export function findAddBlocker(
+  existing: ExistingSapIdRow[],
+  email: string | null,
+  emailIsAdmin: boolean
+): AddBlocker | null {
+  const existingEmails = [
+    ...new Set(existing.flatMap((row) => (row.email ? [row.email] : []))),
+  ];
+  if (email && existingEmails.includes(email)) {
+    return { reason: "sameEmail" };
+  }
+  if (existingEmails.length > 0) {
+    return { reason: "otherEmail", emails: existingEmails };
+  }
+  if (existing.length > 0 && !email) {
+    return { reason: "noEmailGiven" };
+  }
+  if (email && emailIsAdmin) {
+    return { reason: "adminEmail" };
+  }
+  return null;
+}
+
+export function addBlockerMessage(
+  sapId: number,
+  email: string | null,
+  blocker: AddBlocker
+) {
+  switch (blocker.reason) {
+    case "sameEmail":
+      return `SAP ID ${sapId} is already registered with ${email}.`;
+    case "otherEmail":
+      return `SAP ID ${sapId} is already registered with ${blocker.emails.join(
+        ", "
+      )}. Edit that user instead of adding another.`;
+    case "noEmailGiven":
+      return `SAP ID ${sapId} is already in the users table. Enter an email to let them sign in.`;
+    case "adminEmail":
+      return adminEmailMessage(email ?? "");
+  }
+}
+
 export type AddUserResult = {
   sapId: number;
   fullName: string;
@@ -518,33 +589,22 @@ export type AddUserResult = {
 
 // Adds a SAP ID, or fills in its missing email, inside the caller's
 // transaction
-async function addUserInTransaction(
+export async function addUserInTransaction(
   tx: Transaction,
   { sapId, fullName, email }: UserFields
 ): Promise<AddUserResult> {
   const existing = await lockSapId(tx, sapId);
-  const existingEmails = [
-    ...new Set(existing.map((row) => normalise(row.Email)).filter(Boolean)),
-  ] as string[];
-
-  if (email && existingEmails.includes(email)) {
-    throw new UserChangeRejectedError(
-      `SAP ID ${sapId} is already registered with ${email}.`
-    );
+  const blocker = findAddBlocker(
+    existing.map((row) => ({
+      fullName: row.FullName,
+      email: normalise(row.Email),
+    })),
+    email,
+    await isAdminEmail(tx, email)
+  );
+  if (blocker) {
+    throw new UserChangeRejectedError(addBlockerMessage(sapId, email, blocker));
   }
-  if (existingEmails.length > 0) {
-    throw new UserChangeRejectedError(
-      `SAP ID ${sapId} is already registered with ${existingEmails.join(
-        ", "
-      )}. Edit that user instead of adding another.`
-    );
-  }
-  if (existing.length > 0 && !email) {
-    throw new UserChangeRejectedError(
-      `SAP ID ${sapId} is already in the users table. Enter an email to let them sign in.`
-    );
-  }
-  await rejectAdminEmail(tx, email);
   const otherSapIds = await otherSapIdsFor(tx, email, sapId);
 
   if (existing.length > 0) {
@@ -575,7 +635,7 @@ async function addUserInTransaction(
 }
 
 // There is no history table for users; the server log records who did it
-function logAdded(result: AddUserResult, addedBy: string) {
+export function logAdded(result: AddUserResult, addedBy: string) {
   console.info(
     `users: ${addedBy} ${
       result.outcome === "added" ? "added" : "set the email on"
