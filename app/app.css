@@ -6,6 +6,32 @@
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif,
     "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+
+  /* The page loading bar: creeps towards the end while waiting, slowing as
+     it goes so it never gets there, then fills and fades once loaded */
+  --animate-progress-trickle: progress-trickle 10s cubic-bezier(0.1, 0.8, 0.2, 1)
+    forwards;
+  --animate-progress-done: progress-done 400ms ease-out forwards;
+
+  @keyframes progress-trickle {
+    from {
+      width: 8%;
+    }
+    to {
+      width: 90%;
+    }
+  }
+
+  @keyframes progress-done {
+    from {
+      width: 100%;
+      opacity: 1;
+    }
+    to {
+      width: 100%;
+      opacity: 0;
+    }
+  }
 }
 
 html,

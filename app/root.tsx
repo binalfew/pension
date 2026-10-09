@@ -11,6 +11,7 @@ import {
 import type { Route } from "./+types/root";
 import "./app.css";
 import Navigation from "./components/navigation";
+import { NavigationProgress } from "./components/navigation-progress";
 import { getUserEmail, getUserName } from "./lib/auth.server";
 import { resolveUserByEmail } from "./lib/db.server";
 import { useNonce } from "./lib/nonce-provider";
@@ -90,6 +91,7 @@ export default function App({ loaderData }: Route.ComponentProps) {
   const { user } = loaderData;
   return (
     <div className="min-h-screen bg-background">
+      <NavigationProgress />
       <Navigation user={user} />
       <main className="p-4 md:p-6">
         <Outlet />
