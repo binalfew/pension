@@ -33,6 +33,7 @@ import {
 import { getUserEmail } from "~/lib/auth.server";
 import { downloadCsv } from "~/lib/csv";
 import { getDataQualityReport, resolveUserByEmail } from "~/lib/db.server";
+import { personPath } from "~/lib/user-links";
 import { cn, formatAmount, formatPeriod } from "~/lib/utils";
 import type { Route } from "./+types/data-quality";
 
@@ -62,6 +63,19 @@ function SapIdLink({ sapId }: { sapId: number | null }) {
       className="font-medium text-primary hover:underline"
     >
       {sapId}
+    </Link>
+  );
+}
+
+// Opens the Users page that fixes the row: adding the SAP ID, or giving its
+// person an email
+function AddUserLink({ to, label }: { to: string; label: string }) {
+  return (
+    <Link
+      to={to}
+      className="whitespace-nowrap text-primary hover:underline"
+    >
+      {label}
     </Link>
   );
 }
@@ -300,7 +314,7 @@ export default function DataQuality({ loaderData }: Route.ComponentProps) {
         id="orphan-contributions"
         icon={Banknote}
         title="Contributions with no pensioner"
-        description={`These SAP IDs have contributions but no row in the users table, so $${formatAmount(orphanTotal)} appears on no one's statement. Usually new staff whose payroll was uploaded before they were registered. The CSV has the users table columns to fill in.`}
+        description={`These SAP IDs have contributions but no row in the users table, so $${formatAmount(orphanTotal)} appears on no one's statement. Usually new staff whose payroll was uploaded before they were registered. Add them one at a time with Add user, or fill in the CSV, which has the users table columns.`}
         count={orphanContributions.length}
         onDownload={() =>
           downloadCsv(
@@ -324,6 +338,7 @@ export default function DataQuality({ loaderData }: Route.ComponentProps) {
               <TableHead>Period</TableHead>
               <TableHead className="w-36 text-right">Contributions</TableHead>
               <TableHead className="w-36 text-right">Total</TableHead>
+              <TableHead className="w-28" />
             </TableRow>
           </TableHeader>
           <TableBody className={tableBodyClass}>
@@ -340,6 +355,9 @@ export default function DataQuality({ loaderData }: Route.ComponentProps) {
                 </TableCell>
                 <TableCell className="text-right tabular-nums">
                   ${formatAmount(row.Total)}
+                </TableCell>
+                <TableCell className="text-right">
+                  <AddUserLink to={`/users/new?sapId=${row.SAPID}`} label="Add user" />
                 </TableCell>
               </TableRow>
             ))}
@@ -371,6 +389,7 @@ export default function DataQuality({ loaderData }: Route.ComponentProps) {
               <TableHead className="w-32">SAP ID</TableHead>
               <TableHead>Name</TableHead>
               <TableHead className="w-36 text-right">Contributions</TableHead>
+              <TableHead className="w-28" />
             </TableRow>
           </TableHeader>
           <TableBody className={tableBodyClass}>
@@ -382,6 +401,12 @@ export default function DataQuality({ loaderData }: Route.ComponentProps) {
                 <TableCell>{row.FullName?.trim() || "—"}</TableCell>
                 <TableCell className="text-right tabular-nums">
                   {row.ContributionCount.toLocaleString()}
+                </TableCell>
+                <TableCell className="text-right">
+                  <AddUserLink
+                    to={personPath({ sapId: row.SAPID })}
+                    label="Add email"
+                  />
                 </TableCell>
               </TableRow>
             ))}

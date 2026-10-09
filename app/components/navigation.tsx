@@ -11,6 +11,7 @@ const adminNavItems = [
   { to: "/statement", label: "Statement" },
   { to: "/projection", label: "Projection" },
   { to: "/contributions-upload", label: "Upload" },
+  { to: "/users", label: "Users" },
   { to: "/data-quality", label: "Quality" },
   { to: "/diagnosis", label: "Diagnosis" },
 ];
@@ -83,7 +84,9 @@ export default function Navigation({
                           <NavLink
                             key={item.to}
                             to={item.to}
-                            end
+                            // Users stays highlighted on its add, edit and
+                            // delete pages
+                            end={item.to !== "/users"}
                             className={navLinkClass}
                           >
                             {item.label}
@@ -152,7 +155,7 @@ export default function Navigation({
                 <NavLink
                   key={item.to}
                   to={item.to}
-                  end
+                  end={item.to !== "/users"}
                   className={(state) =>
                     cn(
                       "block rounded-md px-2 py-2 hover:bg-primary-foreground/10",

@@ -3,6 +3,7 @@ import {
   CheckCircle2,
   Info,
   Layers,
+  Plus,
   UserSearch,
   XCircle,
   type LucideIcon,
@@ -17,6 +18,7 @@ import {
   type BadgeTone,
 } from "~/components/table-styles";
 import { Badge } from "~/components/ui/badge";
+import { Button } from "~/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
 import { Input } from "~/components/ui/input";
 import { Label } from "~/components/ui/label";
@@ -36,6 +38,7 @@ import {
   type NearMatch,
   type SignInCheck,
 } from "~/lib/sign-in-check";
+import { personPath } from "~/lib/user-links";
 import { cn, formatAmount, formatPeriod } from "~/lib/utils";
 import type { Route } from "./+types/diagnosis";
 
@@ -167,15 +170,23 @@ function SapIdTable({ check }: { check: SignInCheck }) {
   }
   return (
     <Card className="gap-4 overflow-hidden pb-0">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-lg">
-          <Layers className="size-4 text-muted-foreground" />
-          SAP IDs for this email
-        </CardTitle>
-        <p className="text-sm text-muted-foreground">
-          In the order sign-in uses: the first one opens, the others are in the
-          switcher.
-        </p>
+      <CardHeader className="gap-3 sm:grid-cols-[1fr_auto]">
+        <div className="space-y-1.5">
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <Layers className="size-4 text-muted-foreground" />
+            SAP IDs for this email
+          </CardTitle>
+          <p className="text-sm text-muted-foreground">
+            In the order sign-in uses: the first one opens, the others are in
+            the switcher.
+          </p>
+        </div>
+        <Button asChild size="sm" variant="outline" className="justify-self-start">
+          <Link to={personPath({ email: check.email })}>
+            <Plus />
+            Add a SAP ID
+          </Link>
+        </Button>
       </CardHeader>
       <CardContent className="border-t p-0">
         <Table>
@@ -246,7 +257,14 @@ function NearMatches({ check }: { check: SignInCheck }) {
           <Link to="/statement" className="font-medium text-primary hover:underline">
             statement search
           </Link>
-          ; if they aren't there, they need adding to the users table.
+          ; if they aren't there,{" "}
+          <Link
+            to={`/users/new?email=${encodeURIComponent(check.email)}`}
+            className="font-medium text-primary hover:underline"
+          >
+            add them to the users table
+          </Link>
+          .
         </CardContent>
       </Card>
     );

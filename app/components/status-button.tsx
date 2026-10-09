@@ -57,7 +57,8 @@ export const StatusButton = ({
 
   return (
     <Button className={cn("flex justify-center gap-4", className)} {...props}>
-      <div>{children}</div>
+      {/* Keeps an icon beside the label rather than above it */}
+      <div className="inline-flex items-center gap-2">{children}</div>
       {message ? (
         <TooltipProvider>
           <Tooltip>
