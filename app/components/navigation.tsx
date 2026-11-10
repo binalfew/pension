@@ -10,7 +10,7 @@ const adminNavItems = [
   { to: "/", label: "Overview" },
   { to: "/statement", label: "Statement" },
   { to: "/projection", label: "Projection" },
-  { to: "/contributions-upload", label: "Upload" },
+  { to: "/statements", label: "Download" },
   { to: "/users", label: "Users" },
   { to: "/data-quality", label: "Quality" },
   { to: "/diagnosis", label: "Diagnosis" },

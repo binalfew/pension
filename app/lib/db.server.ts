@@ -1,5 +1,4 @@
 import type { ComputedInterest } from "~/types/computed-interest";
-import type { Contribution } from "~/types/contribution";
 import type { ContributionType } from "~/types/contribution-type";
 import type { ContributionView } from "~/types/contribution-view";
 import type { SapIdSummary } from "~/types/sap-id-summary";
@@ -142,43 +141,6 @@ export async function getAllContributionTypes(): Promise<ContributionType[]> {
   return prisma.$queryRaw<ContributionType[]>`SELECT * FROM contributionTypes`;
 }
 
-export async function getContributionsByType(
-  sapId: number,
-  contributionTypeId: number
-): Promise<Contribution[]> {
-  return prisma.$queryRaw<Contribution[]>`
-    SELECT * FROM contributions 
-    WHERE SAPID = ${sapId} 
-    AND ContributionTypeID = ${contributionTypeId}
-  `;
-}
-
-// Same columns as ContributionView, but keeps contributions that have no
-// office: the view's inner join drops them even though they count towards
-// the balance.
-export async function getContributionsBySapId(
-  sapId: number
-): Promise<ContributionView[]> {
-  return prisma.$queryRaw<ContributionView[]>`
-    SELECT c.SAPID, c.Amount, c.ForPeriod, c.InPeriod, o.OfficeName, t.ContributionTypeName
-    FROM contributions c
-    INNER JOIN contributionTypes t ON t.ID = c.ContributionTypeID
-    LEFT JOIN offices o ON o.ID = c.OfficeID
-    WHERE c.SAPID = ${sapId}
-    ORDER BY c.ForPeriod DESC, t.ID
-  `;
-}
-
-export async function getComputedInterestsBySapId(
-  sapId: number
-): Promise<ComputedInterest[]> {
-  return prisma.$queryRaw<ComputedInterest[]>`
-    SELECT * FROM ComputedInterests 
-    WHERE SAPID = ${sapId} 
-    ORDER BY YearMonth DESC
-  `;
-}
-
 export type PensionStatementData = {
   statement: Statement;
   total: Account;
@@ -193,16 +155,55 @@ function latestPeriod(periods: number[]): number | null {
   return months.length > 0 ? Math.max(...months) : null;
 }
 
-export async function generatePensionStatement(
-  user: User
-): Promise<PensionStatementData> {
-  const sapId = user.SAPID ?? 0;
+// A contribution as the statement needs it: the ContributionView columns plus
+// the type ID the account balances are grouped by
+type StatementContribution = ContributionView & { ContributionTypeID: number };
+
+// Contributions of the given SAP IDs, newest first. Keeps contributions that
+// have no office: the view's inner join drops them even though they count
+// towards the balance.
+async function getStatementContributions(
+  sapIds: number[]
+): Promise<StatementContribution[]> {
+  return prisma.$queryRaw<StatementContribution[]>`
+    SELECT c.SAPID, c.Amount, c.ForPeriod, c.InPeriod, o.OfficeName,
+      t.ContributionTypeName, t.ID AS ContributionTypeID
+    FROM contributions c
+    INNER JOIN contributionTypes t ON t.ID = c.ContributionTypeID
+    LEFT JOIN offices o ON o.ID = c.OfficeID
+    WHERE c.SAPID IN (${Prisma.join(sapIds)})
+    ORDER BY c.SAPID, c.ForPeriod DESC, t.ID
+  `;
+}
+
+async function getStatementInterests(
+  sapIds: number[]
+): Promise<ComputedInterest[]> {
+  return prisma.$queryRaw<ComputedInterest[]>`
+    SELECT * FROM ComputedInterests
+    WHERE SAPID IN (${Prisma.join(sapIds)})
+    ORDER BY SAPID, YearMonth DESC
+  `;
+}
+
+// The statement of one SAP ID from its already loaded contributions and
+// interest
+function buildPensionStatement(
+  user: User,
+  contributionTypes: ContributionType[],
+  contributions: StatementContribution[],
+  computedInterests: ComputedInterest[]
+): PensionStatementData {
   const statement: Statement = {
     EmployeeFullName: user.FullName ?? "",
     PensionID: user.PensionID ?? 0,
-    SapIds: [sapId],
-    ContributionsThrough: null,
-    InterestThrough: null,
+    SapIds: [user.SAPID ?? 0],
+    ContributionsThrough: latestPeriod(
+      contributions.map((contribution) => contribution.ForPeriod ?? 0)
+    ),
+    InterestThrough: latestPeriod(
+      computedInterests.map((interest) => interest.YearMonth)
+    ),
     Accounts: [],
   };
 
@@ -211,41 +212,21 @@ export async function generatePensionStatement(
     Balance: 0,
   };
 
-  const [contributionTypes, contributions, computedInterests] =
-    await Promise.all([
-      getAllContributionTypes(),
-      getContributionsBySapId(sapId),
-      getComputedInterestsBySapId(sapId),
-    ]);
-  const contributionsByType = await Promise.all(
-    contributionTypes.map((contributionType) =>
-      getContributionsByType(sapId, contributionType.ID)
-    )
-  );
-
-  contributionTypes.forEach((contributionType, index) => {
-    const contributions = contributionsByType[index];
+  for (const contributionType of contributionTypes) {
     const account = {
       AccountName: contributionType.ContributionTypeName,
       Balance: contributions.reduce(
-        (acc, contribution) => acc + (contribution.Amount ?? 0),
+        (acc, contribution) =>
+          contribution.ContributionTypeID === contributionType.ID
+            ? acc + (contribution.Amount ?? 0)
+            : acc,
         0
       ),
     };
-
     statement.Accounts.push(account);
-
     total.Balance += account.Balance;
-  });
+  }
 
-  statement.ContributionsThrough = latestPeriod(
-    contributionsByType.flat().map((contribution) => contribution.ForPeriod ?? 0)
-  );
-  statement.InterestThrough = latestPeriod(
-    computedInterests.map((interest) => interest.YearMonth)
-  );
-
-  // Add Calculated Interests to the statement
   const cumulatedInterests = {
     AccountName: "CUMULATIVE INTERESTS",
     Balance: computedInterests.reduce(
@@ -253,13 +234,76 @@ export async function generatePensionStatement(
       0
     ),
   };
-
   total.Balance += cumulatedInterests.Balance;
 
   statement.Accounts.push(cumulatedInterests);
   statement.Accounts.push(total);
 
-  return { statement, total, contributions, computedInterests };
+  return {
+    statement,
+    total,
+    contributions: contributions.map(
+      ({ ContributionTypeID, ...contribution }) => contribution
+    ),
+    computedInterests,
+  };
+}
+
+export async function generatePensionStatement(
+  user: User
+): Promise<PensionStatementData> {
+  const sapId = user.SAPID ?? 0;
+  const [contributionTypes, contributions, computedInterests] =
+    await Promise.all([
+      getAllContributionTypes(),
+      getStatementContributions([sapId]),
+      getStatementInterests([sapId]),
+    ]);
+  return buildPensionStatement(
+    user,
+    contributionTypes,
+    contributions,
+    computedInterests
+  );
+}
+
+// Statements for many SAP IDs in three queries, for bulk downloads. SAP IDs
+// with no users row are left out.
+export async function generatePensionStatementsBySapIds(
+  sapIds: number[]
+): Promise<Map<number, PensionStatementData>> {
+  const statements = new Map<number, PensionStatementData>();
+  if (sapIds.length === 0) {
+    return statements;
+  }
+  const [users, contributionTypes, contributions, computedInterests] =
+    await Promise.all([
+      // A SAP ID can have duplicate rows, so prefer the one with an email,
+      // as getUserBySapId does
+      prisma.$queryRaw<User[]>`
+        SELECT * FROM users
+        WHERE SAPID IN (${Prisma.join(sapIds)})
+        ORDER BY CASE WHEN Email IS NULL THEN 1 ELSE 0 END
+      `,
+      getAllContributionTypes(),
+      getStatementContributions(sapIds),
+      getStatementInterests(sapIds),
+    ]);
+  for (const sapId of sapIds) {
+    const user = users.find((row) => row.SAPID === sapId);
+    if (user) {
+      statements.set(
+        sapId,
+        buildPensionStatement(
+          user,
+          contributionTypes,
+          contributions.filter((row) => row.SAPID === sapId),
+          computedInterests.filter((row) => row.SAPID === sapId)
+        )
+      );
+    }
+  }
+  return statements;
 }
 
 // Generate pension statement by SAP ID (for admin viewing others' statements)
