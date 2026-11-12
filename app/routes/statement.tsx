@@ -138,8 +138,13 @@ export default function Home({ loaderData }: Route.ComponentProps) {
     submit(filteredData, { method: "GET", action: handler });
   }, 400);
 
+  // The query the current suggestions were loaded for
+  const suggestionsQuery = useRef("");
+  const [activeIndex, setActiveIndex] = useState(0);
+
   const handleSearchInput = useDebounce((value: string) => {
     if (value && value.trim().length >= 2) {
+      suggestionsQuery.current = value.trim();
       searchFetcher.load(`/api/search?q=${encodeURIComponent(value.trim())}`);
       setShowDropdown(true);
     } else {
@@ -156,7 +161,53 @@ export default function Home({ loaderData }: Route.ComponentProps) {
   const sapIdSummaries =
     "sapIdSummaries" in loaderData ? loaderData.sapIdSummaries : [];
 
-  const suggestions = searchFetcher.data?.suggestions || [];
+  const suggestions: Array<{ SAPID: number; FullName: string; Email: string }> =
+    searchFetcher.data?.suggestions || [];
+
+  // Highlight the best match whenever a new set of suggestions arrives
+  useEffect(() => {
+    setActiveIndex(0);
+  }, [searchFetcher.data]);
+
+  function openSuggestion(suggestion: { SAPID: number }) {
+    if (inputRef.current) {
+      inputRef.current.value = String(suggestion.SAPID);
+    }
+    setShowDropdown(false);
+    submit(
+      { sapId: String(suggestion.SAPID) },
+      { method: "GET", action: handler }
+    );
+  }
+
+  function handleSearchKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+    const open = showDropdown && suggestions.length > 0;
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      if (suggestions.length === 0) return;
+      event.preventDefault();
+      if (!open) {
+        setShowDropdown(true);
+        return;
+      }
+      const step = event.key === "ArrowDown" ? 1 : -1;
+      setActiveIndex(
+        (index) => (index + step + suggestions.length) % suggestions.length
+      );
+    } else if (event.key === "Escape" && open) {
+      event.preventDefault();
+      setShowDropdown(false);
+    } else if (event.key === "Enter" && open) {
+      // Only pick a suggestion if the list matches what's typed; otherwise
+      // (still typing, or results loading) search for the typed text
+      const fresh =
+        searchFetcher.state === "idle" &&
+        suggestionsQuery.current === event.currentTarget.value.trim();
+      if (fresh) {
+        event.preventDefault();
+        openSuggestion(suggestions[activeIndex] ?? suggestions[0]);
+      }
+    }
+  }
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -325,7 +376,18 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                     defaultValue={searchParams.get("sapId") ?? ""}
                     placeholder="Enter SAP ID, email or name to search"
                     className="w-full"
+                    autoComplete="off"
+                    role="combobox"
+                    aria-autocomplete="list"
+                    aria-controls="sapId-suggestions"
+                    aria-expanded={showDropdown && suggestions.length > 0}
+                    aria-activedescendant={
+                      showDropdown && suggestions.length > 0
+                        ? `sapId-suggestion-${activeIndex}`
+                        : undefined
+                    }
                     onChange={(e) => handleSearchInput(e.target.value)}
+                    onKeyDown={handleSearchKeyDown}
                     onFocus={() => {
                       if (suggestions.length > 0) {
                         setShowDropdown(true);
@@ -335,40 +397,38 @@ export default function Home({ loaderData }: Route.ComponentProps) {
 
                   {/* Autocomplete suggestions */}
                   {showDropdown && suggestions.length > 0 && (
-                    <div className="absolute top-full left-0 right-0 bg-background border border-border rounded-md shadow-lg z-10 max-h-60 overflow-y-auto">
-                      {suggestions.map(
-                        (suggestion: {
-                          SAPID: number;
-                          FullName: string;
-                          Email: string;
-                        }) => (
-                          <button
-                            key={suggestion.SAPID}
-                            type="button"
-                            className="w-full px-3 py-2 text-left hover:bg-muted/50 focus:bg-muted/50 focus:outline-none"
-                            onClick={() => {
-                              const form = document.querySelector(
-                                'form[method="GET"]'
-                              ) as HTMLFormElement;
-                              const input = form?.querySelector(
-                                'input[name="sapId"]'
-                              ) as HTMLInputElement;
-                              if (input) {
-                                input.value = suggestion.SAPID.toString();
-                                setShowDropdown(false);
-                                handleFormChange(form);
-                              }
-                            }}
-                          >
-                            <div className="font-medium">
-                              {suggestion.FullName}
-                            </div>
-                            <div className="text-sm text-muted-foreground">
-                              SAP ID: {suggestion.SAPID} • {suggestion.Email}
-                            </div>
-                          </button>
-                        )
-                      )}
+                    <div
+                      id="sapId-suggestions"
+                      role="listbox"
+                      className="absolute top-full left-0 right-0 bg-background border border-border rounded-md shadow-lg z-10 max-h-60 overflow-y-auto"
+                    >
+                      {suggestions.map((suggestion, index) => (
+                        <button
+                          key={suggestion.SAPID}
+                          id={`sapId-suggestion-${index}`}
+                          role="option"
+                          aria-selected={index === activeIndex}
+                          type="button"
+                          tabIndex={-1}
+                          className={`w-full px-3 py-2 text-left hover:bg-muted/50 focus:outline-none ${
+                            index === activeIndex ? "bg-muted/50" : ""
+                          }`}
+                          ref={(element) => {
+                            if (index === activeIndex) {
+                              element?.scrollIntoView({ block: "nearest" });
+                            }
+                          }}
+                          onMouseEnter={() => setActiveIndex(index)}
+                          onClick={() => openSuggestion(suggestion)}
+                        >
+                          <div className="font-medium">
+                            {suggestion.FullName}
+                          </div>
+                          <div className="text-sm text-muted-foreground">
+                            SAP ID: {suggestion.SAPID} • {suggestion.Email}
+                          </div>
+                        </button>
+                      ))}
                     </div>
                   )}
                 </div>
