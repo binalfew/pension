@@ -295,7 +295,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
         <div>
           <h1 className="text-2xl font-semibold">Pension statement</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Look up a pensioner by SAP ID or name to see their statement,
+            Look up a pensioner by SAP ID, email or name to see their statement,
             balance history and monthly contributions.
           </p>
         </div>
@@ -323,7 +323,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                     name="sapId"
                     id="sapId"
                     defaultValue={searchParams.get("sapId") ?? ""}
-                    placeholder="Enter SAP ID or name to search"
+                    placeholder="Enter SAP ID, email or name to search"
                     className="w-full"
                     onChange={(e) => handleSearchInput(e.target.value)}
                     onFocus={() => {

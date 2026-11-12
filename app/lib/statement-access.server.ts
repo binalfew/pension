@@ -4,6 +4,7 @@ import {
   generatePensionStatement,
   generatePensionStatementBySapId,
   getRelatedSapIds,
+  getUsersByEmail,
   resolveUserByEmail,
   type PensionStatementData,
 } from "./db.server";
@@ -39,16 +40,41 @@ export async function selectStatement(
   const combined = searchParams.get("view") === "combined";
 
   if (resolvedUser.role === "Admin") {
-    if (!selectedSapId) {
+    const lookup = selectedSapId?.trim();
+    if (!lookup) {
       return { status: "none" };
     }
-    const sapId = parseInt(selectedSapId);
-    if (isNaN(sapId)) {
-      return { status: "error", httpStatus: 400, message: "Invalid SAP ID" };
+
+    let sapId: number;
+    let personSapIds: number[];
+    if (lookup.includes("@")) {
+      // Admins can look a pensioner up by email; open their most recently
+      // active SAP ID
+      const accounts = (await getUsersByEmail(lookup)).filter(
+        (account) => account.SAPID
+      );
+      if (accounts.length === 0) {
+        return {
+          status: "error",
+          httpStatus: 404,
+          message: `No pensioner found with the email ${lookup}`,
+        };
+      }
+      personSapIds = accounts.map((account) => account.SAPID as number);
+      sapId = personSapIds[0];
+    } else {
+      sapId = Number(lookup);
+      if (!Number.isInteger(sapId)) {
+        return {
+          status: "error",
+          httpStatus: 400,
+          message: "Enter a SAP ID or an email address",
+        };
+      }
+      // Other SAP IDs belonging to the same person
+      personSapIds = await getRelatedSapIds(sapId);
     }
 
-    // Other SAP IDs belonging to the same person
-    const personSapIds = await getRelatedSapIds(sapId);
     const statementData =
       combined && personSapIds.length > 1
         ? combineFound(
